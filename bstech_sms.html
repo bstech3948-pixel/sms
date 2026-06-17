@@ -493,38 +493,53 @@ document.getElementById("syncScanBtn").addEventListener("click", async () => {
   }
 });
 
+// 발송 완료 송장번호 영구 저장
+const SENT_KEY = "bstech_sent_trackings";
+let sentTrackings = [];
+try { sentTrackings = JSON.parse(localStorage.getItem(SENT_KEY)||"[]"); } catch(e) { sentTrackings=[]; }
+
+function saveSentTrackings() {
+  try { localStorage.setItem(SENT_KEY, JSON.stringify(sentTrackings)); } catch(e) {}
+}
+
+function markAsSent(trackings) {
+  trackings.forEach(t => { if (!sentTrackings.includes(t)) sentTrackings.push(t); });
+  saveSentTrackings();
+}
+
 function buildMergedGroups() {
-  // 같은 받는분끼리 합치기
   const groups = {};
   scanList.forEach((s, idx) => {
-    if (!s.record || s.sent) return; // 발송완료는 제외
+    if (!s.record) return;
+    // 발송 완료 확인 (영구 저장된 목록에서)
+    if (sentTrackings.includes(s.tracking) || s.sent) {
+      s.sent = true;
+      return;
+    }
     const name = s.record.name;
     if (!groups[name]) {
       groups[name] = {
         name: name,
         trackings: [],
         items: [],
-        totals: [],
+        total: s.record.total, // 첫 번째 건의 총액만 사용 (합산 안 함)
         record: s.record,
         indices: [],
         time: s.time
       };
     }
     groups[name].trackings.push(s.tracking);
-    if (s.record.items) groups[name].items.push(s.record.items);
-    if (s.record.total) groups[name].totals.push(s.record.total);
+    if (s.record.items && !groups[name].items.includes(s.record.items)) {
+      groups[name].items.push(s.record.items);
+    }
     groups[name].indices.push(idx);
   });
   return Object.values(groups);
 }
 
 function buildMergedMessage(group) {
-  const allItems = [...new Set(group.items)].join(", ");
+  const allItems = group.items.join(", ");
   const trackingList = group.trackings.join("\n");
-  const totalSum = group.totals.reduce((sum, t) => {
-    const num = parseInt(String(t).replace(/[^\d]/g,"")) || 0;
-    return sum + num;
-  }, 0);
 
   return "[(주)창성비에스] " + group.name + " 고객님\n" +
     "재코팅 물품이 발송되었습니다\n" +
@@ -532,7 +547,7 @@ function buildMergedMessage(group) {
     "송장번호: " + trackingList + "\n\n" +
     "입금 계좌 안내\n" +
     ACCOUNT + "\n" +
-    "입금금액: " + formatMoney(totalSum) + "\n\n" +
+    "입금금액: " + formatMoney(group.total) + "\n\n" +
     "감사합니다\n" +
     "문의: 010-7154-3948";
 }
@@ -572,7 +587,7 @@ function renderScanList() {
           '<div class="scan-detail"><span class="scan-detail-label">상호명</span><span class="scan-detail-val">'+esc(g.name)+'</span></div>'+
           '<div class="scan-detail"><span class="scan-detail-label">품목</span><span class="scan-detail-val">'+esc([...new Set(g.items)].join(", ")||"없음")+'</span></div>'+
           '<div class="scan-detail"><span class="scan-detail-label">송장번호</span><span class="scan-detail-val">'+esc(trackingDisplay)+'</span></div>'+
-          '<div class="scan-detail"><span class="scan-detail-label">총액</span><span class="scan-detail-val">'+formatMoney(g.totals.reduce((s,t)=>s+(parseInt(String(t).replace(/[^\d]/g,""))||0),0))+'</span></div>'+
+          '<div class="scan-detail"><span class="scan-detail-label">총액</span><span class="scan-detail-val">'+formatMoney(g.total)+'</span></div>'+
           '<div style="margin-top:8px;font-size:12px;color:#6b7280;font-weight:500;">연락처</div>'+
           '<input class="scan-phone" id="scanPhoneg'+gIdx+'" value="'+esc(autoPhone)+'" placeholder="010-0000-0000">'+
           '<div style="font-size:12px;color:#6b7280;font-weight:500;">문자 미리보기 (직접 수정 가능)</div>'+
@@ -627,6 +642,7 @@ async function sendGroupDirect(gIdx) {
 
   if (result._responseReceived && result.result_code===1) {
     group.indices.forEach(i => { scanList[i].sent = true; });
+    markAsSent(group.trackings);
     addHistory(group.name, phone, group.trackings.join(", "), msg, "발송 성공");
     renderScanList();
     showToast("✅ "+group.name+"님께 문자 발송 완료!");
@@ -635,6 +651,7 @@ async function sendGroupDirect(gIdx) {
     btn.textContent = "📨 "+group.name+"님께 문자 발송";
   } else {
     group.indices.forEach(i => { scanList[i].sent = true; });
+    markAsSent(group.trackings);
     addHistory(group.name, phone, group.trackings.join(", "), msg, "응답확인불가");
     renderScanList();
     showToast("⚠️ 요청은 보냈어요. 알리고 전송내역에서 확인해주세요.", true);
@@ -659,10 +676,12 @@ document.getElementById("sendAllScansBtn").addEventListener("click", async () =>
 
     if (result._responseReceived && result.result_code===1) {
       group.indices.forEach(i => { scanList[i].sent = true; });
+      markAsSent(group.trackings);
       addHistory(group.name, phone, group.trackings.join(", "), msg, "발송 성공");
       success++;
     } else if (!result._responseReceived) {
       group.indices.forEach(i => { scanList[i].sent = true; });
+      markAsSent(group.trackings);
       addHistory(group.name, phone, group.trackings.join(", "), msg, "응답확인불가");
       success++;
     } else {
@@ -841,9 +860,11 @@ function resetAfterSend() {
 
 // ── 내역 ──
 document.getElementById("clearHistoryBtn").addEventListener("click", () => {
-  if (!confirm("발송 내역을 전부 삭제할까요?")) return;
+  if (!confirm("발송 내역과 발송 완료 기록을 전부 삭제할까요?\n(스캔 목록에서 발송 완료 건이 다시 나타나요)")) return;
   history = [];
+  sentTrackings = [];
   saveHistory();
+  saveSentTrackings();
   renderHistory();
   showToast("발송 내역이 삭제됐어요.");
 });
