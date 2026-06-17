@@ -64,6 +64,17 @@ input { width:100%; padding:9px 10px; border:1px solid #e5e7eb; border-radius:8p
 .toast { position:fixed; bottom:30px; left:50%; transform:translateX(-50%); color:#fff; padding:12px 24px; border-radius:24px; font-size:14px; font-weight:600; box-shadow:0 4px 12px rgba(0,0,0,0.2); z-index:999; max-width:90%; text-align:center; display:none; }
 .badge-success { background:#dcfce7; color:#15803d; font-size:11px; padding:2px 8px; border-radius:10px; }
 .badge-warn { background:#fef3c7; color:#92400e; font-size:11px; padding:2px 8px; border-radius:10px; }
+.scan-expand { display:none; margin-top:10px; padding-top:10px; border-top:1px solid #e5e7eb; }
+.scan-expand.open { display:block; }
+.scan-detail { display:flex; justify-content:space-between; font-size:12px; padding:3px 0; }
+.scan-detail-label { color:#6b7280; }
+.scan-detail-val { color:#1f2937; font-weight:600; text-align:right; max-width:60%; }
+.scan-phone { width:100%; padding:8px 10px; border:1px solid #e5e7eb; border-radius:8px; font-size:13px; margin:8px 0; box-sizing:border-box; font-family:inherit; }
+.scan-preview { width:100%; padding:10px; border:1px solid #e5e7eb; border-radius:8px; font-size:12px; line-height:1.8; color:#374151; resize:none; box-sizing:border-box; font-family:inherit; background:#f9fafb; }
+.scan-char { font-size:11px; color:#9ca3af; margin:4px 0 8px; }
+.scan-send-btn { width:100%; padding:10px; background:#1f2937; color:#fff; border:none; border-radius:8px; font-size:14px; font-weight:600; cursor:pointer; font-family:inherit; }
+.scan-send-btn:disabled { opacity:0.6; cursor:not-allowed; }
+.scan-toggle { background:none; border:1px solid #e5e7eb; border-radius:6px; padding:4px 10px; font-size:11px; color:#6b7280; cursor:pointer; font-family:inherit; }
 </style>
 </head>
 <body>
@@ -407,8 +418,37 @@ document.getElementById("syncScanBtn").addEventListener("click", async () => {
   const status = document.getElementById("scanSyncStatus");
   btn.disabled = true;
   btn.textContent = "⏳ 불러오는 중...";
-  status.textContent = "스캔 목록을 가져오고 있어요...";
+  status.textContent = "데이터를 가져오고 있어요...";
   try {
+    // 1단계: 접수내역 자동 불러오기 (없으면)
+    if (records.length===0) {
+      status.textContent = "① 접수내역 불러오는 중...";
+      const res1 = await fetch(APPS_URL+"?type=records");
+      if (res1.ok) {
+        const data1 = await res1.json();
+        const parsed = parseRecords(data1);
+        setRecords(parsed);
+      }
+    }
+
+    // 2단계: 거래처연락처 자동 불러오기 (없으면)
+    if (contacts.length===0) {
+      status.textContent = "② 거래처연락처 불러오는 중...";
+      const res2 = await fetch(APPS_URL+"?type=contacts");
+      if (res2.ok) {
+        const data2 = await res2.json();
+        const parsed2 = [];
+        for (let i=1; i<data2.length; i++) {
+          const name = String(data2[i][0]||"").trim();
+          let phone = String(data2[i][1]||"").replace(/^'/,"").replace(/[^\d]/g,"");
+          if (name && phone) parsed2.push({name, phone});
+        }
+        contacts = parsed2;
+      }
+    }
+
+    // 3단계: 스캔 목록 불러오기
+    status.textContent = "③ 스캔 목록 불러오는 중...";
     const res = await fetch(APPS_URL+"?type=scans");
     if (!res.ok) throw new Error("서버 오류 ("+res.status+")");
     const data = await res.json();
@@ -432,13 +472,13 @@ document.getElementById("syncScanBtn").addEventListener("click", async () => {
     const now = new Date().toLocaleString("ko-KR");
     status.textContent = "마지막 업데이트: "+now;
     document.getElementById("scanSyncTag").innerHTML =
-      '<div class="file-tag">✅ 스캔 목록 '+scanList.length+'건 불러옴 · 접수내역 매칭: '+scanList.filter(s=>s.record).length+'건</div>';
+      '<div class="file-tag">✅ 접수내역 '+records.length+'건 · 연락처 '+contacts.length+'개 · 스캔 '+scanList.length+'건 불러옴<br>접수내역 매칭: '+scanList.filter(s=>s.record).length+'건</div>';
     renderScanList();
     document.getElementById("scanListCard").style.display = "block";
-    showToast("✅ 스캔 목록 "+scanList.length+"건 불러오기 완료!");
+    showToast("✅ 전체 데이터 불러오기 완료!");
   } catch(e) {
     status.textContent = "불러오기 실패";
-    document.getElementById("scanSyncTag").innerHTML = '<div style="color:#b91c1c;font-size:12px;margin-top:8px;">❌ '+esc(e.message)+'<br>먼저 데이터 탭에서 접수내역을 불러와주세요!</div>';
+    document.getElementById("scanSyncTag").innerHTML = '<div style="color:#b91c1c;font-size:12px;margin-top:8px;">❌ '+esc(e.message)+'</div>';
     showToast("❌ 불러오기 실패: "+e.message, true);
   } finally {
     btn.disabled = false;
@@ -453,58 +493,128 @@ function renderScanList() {
     return;
   }
   list.innerHTML = scanList.map((s, idx) => {
-    const matchHtml = s.record
-      ? '<div class="scan-match">✅ '+esc(s.record.name)+' · '+esc(s.record.total)+'</div>'
-      : '<div class="scan-nomatch">❌ 접수내역에서 찾지 못했어요</div>';
+    const rec = s.record;
     const sentBadge = s.sent ? '<span class="badge-success">발송완료</span>' : '';
+    const matchHtml = rec
+      ? '<div class="scan-match">✅ '+esc(rec.name)+' · '+esc(rec.items||"")+'</div>'
+      : '<div class="scan-nomatch">❌ 접수내역에서 찾지 못했어요</div>';
+
+    // 연락처 자동 찾기
+    const autoPhone = rec ? (extractPhone(rec.memo) || findPhoneByName(rec.name) || "") : "";
+    // 문자 미리보기 자동 생성
+    const previewMsg = rec ? buildMessage(rec.name, rec.total, s.tracking, rec.items) : "";
+
+    let expandHtml = "";
+    if (rec && !s.sent) {
+      expandHtml =
+        '<div class="scan-expand" id="scanExpand'+idx+'">'+
+          '<div class="scan-detail"><span class="scan-detail-label">상호명</span><span class="scan-detail-val">'+esc(rec.name)+'</span></div>'+
+          '<div class="scan-detail"><span class="scan-detail-label">품목</span><span class="scan-detail-val">'+esc(rec.items||"없음")+'</span></div>'+
+          '<div class="scan-detail"><span class="scan-detail-label">총액</span><span class="scan-detail-val">'+esc(rec.total)+'</span></div>'+
+          '<div class="scan-detail"><span class="scan-detail-label">진행사항</span><span class="scan-detail-val">'+esc(rec.status||"-")+'</span></div>'+
+          '<div style="margin-top:8px;font-size:12px;color:#6b7280;font-weight:500;">연락처</div>'+
+          '<input class="scan-phone" id="scanPhone'+idx+'" value="'+esc(autoPhone)+'" placeholder="010-0000-0000">'+
+          '<div style="font-size:12px;color:#6b7280;font-weight:500;">문자 미리보기 (직접 수정 가능)</div>'+
+          '<textarea class="scan-preview" id="scanMsg'+idx+'" rows="8" oninput="updateScanChar('+idx+')">'+esc(previewMsg)+'</textarea>'+
+          '<div class="scan-char" id="scanChar'+idx+'"></div>'+
+          '<button class="scan-send-btn" id="scanSendBtn'+idx+'" onclick="sendScanItemDirect('+idx+')">📨 '+esc(rec.name)+'님께 문자 발송</button>'+
+        '</div>';
+    }
+
     return (
-      '<div class="scan-row">'+
-        '<div class="scan-info">'+
-          '<div class="scan-no">'+esc(s.tracking)+' '+sentBadge+'</div>'+
-          '<div class="scan-time">'+esc(s.time)+'</div>'+
-          matchHtml+
+      '<div class="scan-row" style="display:block;">'+
+        '<div style="display:flex; justify-content:space-between; align-items:center;">'+
+          '<div class="scan-info">'+
+            '<div class="scan-no">'+esc(s.tracking)+' '+sentBadge+'</div>'+
+            '<div class="scan-time">'+esc(s.time)+'</div>'+
+            matchHtml+
+          '</div>'+
+          (rec && !s.sent
+            ? '<button class="scan-toggle" onclick="toggleScanExpand('+idx+')">미리보기</button>'
+            : '')+
         '</div>'+
-        (s.record && !s.sent
-          ? '<button class="btn btn-sm" onclick="sendScanItem('+idx+')">발송</button>'
-          : '')+
+        expandHtml+
       '</div>'
     );
   }).join("");
 }
 
-// 개별 발송
+// 미리보기 펼치기/접기
+function toggleScanExpand(idx) {
+  const el = document.getElementById("scanExpand"+idx);
+  if (!el) return;
+  el.classList.toggle("open");
+  if (el.classList.contains("open")) {
+    updateScanChar(idx);
+  }
+}
+
+// 글자수 업데이트
+function updateScanChar(idx) {
+  const ta = document.getElementById("scanMsg"+idx);
+  if (!ta) return;
+  const len = ta.value.replace(/\s/g,"").length;
+  const charEl = document.getElementById("scanChar"+idx);
+  if (charEl) charEl.textContent = len+"자 / "+(len>90?"LMS 25원":"SMS 8.4원");
+}
+
+// 개별 발송 (미리보기에서 수정한 내용 그대로 발송)
+async function sendScanItemDirect(idx) {
+  const item = scanList[idx];
+  if (!item || !item.record) return;
+
+  const phone = (document.getElementById("scanPhone"+idx).value||"").trim();
+  if (!phone) { showToast("연락처를 입력해주세요!", true); return; }
+
+  const msg = document.getElementById("scanMsg"+idx).value;
+  if (!msg) { showToast("문자 내용이 비어있어요!", true); return; }
+
+  const btn = document.getElementById("scanSendBtn"+idx);
+  btn.disabled = true;
+  btn.textContent = "⏳ 발송 요청 중...";
+
+  const cleanPhone = phone.replace(/-/g,"");
+  const result = await sendSMS(cleanPhone, msg);
+
+  btn.disabled = false;
+
+  if (result._responseReceived && result.result_code===1) {
+    scanList[idx].sent = true;
+    addHistory(item.record.name, phone, item.tracking, msg, "발송 성공");
+    renderScanList();
+    showToast("✅ "+item.record.name+"님께 문자 발송 완료!");
+  } else if (result._responseReceived) {
+    showToast("❌ 발송 실패: "+(result.message||"오류"), true);
+    btn.textContent = "📨 "+item.record.name+"님께 문자 발송";
+  } else {
+    scanList[idx].sent = true;
+    addHistory(item.record.name, phone, item.tracking, msg, "응답확인불가");
+    renderScanList();
+    showToast("⚠️ 요청은 보냈어요. 알리고 전송내역에서 확인해주세요.", true);
+  }
+}
+
+// 개별 발송 (기존 - 일괄발송용)
 async function sendScanItem(idx) {
   const item = scanList[idx];
   if (!item || !item.record) return;
 
   const phone = extractPhone(item.record.memo) || findPhoneByName(item.record.name);
-  if (!phone) {
-    const input = prompt(item.record.name+" 고객 연락처를 입력해주세요 (예: 01012345678):");
-    if (!input) return;
-    await doSendScan(idx, input.replace(/[-\s]/g,""));
-  } else {
-    await doSendScan(idx, phone);
-  }
-}
-
-async function doSendScan(idx, phone) {
-  const item = scanList[idx];
-  const rec  = item.record;
-  const msg  = buildMessage(rec.name, rec.total, item.tracking, rec.items);
-  const result = await sendSMS(phone, msg);
+  if (!phone) return null;
+  
+  const msg = buildMessage(item.record.name, item.record.total, item.tracking, item.record.items);
+  const result = await sendSMS(phone.replace(/-/g,""), msg);
 
   if (result._responseReceived && result.result_code===1) {
     scanList[idx].sent = true;
-    addHistory(rec.name, phone, item.tracking, msg, "발송 성공");
-    renderScanList();
-    showToast("✅ "+rec.name+"님께 문자 발송 완료!");
+    addHistory(item.record.name, phone, item.tracking, msg, "발송 성공");
+    return "success";
   } else if (result._responseReceived) {
-    showToast("❌ 발송 실패: "+(result.message||"오류"), true);
+    return "fail";
   } else {
     scanList[idx].sent = true;
-    addHistory(rec.name, phone, item.tracking, msg, "응답확인불가");
-    renderScanList();
-    showToast("⚠️ 요청은 보냈어요. 알리고 전송내역에서 확인해주세요.", true);
+    addHistory(item.record.name, phone, item.tracking, msg, "응답확인불가");
+    return "unsure";
   }
 }
 
@@ -513,19 +623,20 @@ document.getElementById("sendAllScansBtn").addEventListener("click", async () =>
   const targets = scanList.filter(s=>s.record && !s.sent);
   if (targets.length===0) { showToast("발송할 항목이 없어요!", true); return; }
 
-  if (!confirm(targets.length+"건을 일괄 발송할까요?")) return;
+  if (!confirm(targets.length+"건을 일괄 발송할까요?\n(연락처가 없는 건은 건너뜁니다)")) return;
 
-  let success=0, fail=0;
+  let success=0, fail=0, noPhone=0;
   for (let i=0; i<scanList.length; i++) {
     const item = scanList[i];
     if (!item.record || item.sent) continue;
-    const phone = extractPhone(item.record.memo) || findPhoneByName(item.record.name);
-    if (!phone) { fail++; continue; }
-    await doSendScan(i, phone);
-    success++;
+    const result = await sendScanItem(i);
+    if (result === "success" || result === "unsure") success++;
+    else if (result === "fail") fail++;
+    else noPhone++;
     await new Promise(r=>setTimeout(r,300));
   }
-  showToast("✅ "+success+"건 발송 완료!"+(fail>0?" (연락처 없음 "+fail+"건)":""));
+  renderScanList();
+  showToast("✅ "+success+"건 발송 완료!"+(noPhone>0?" (연락처 없음 "+noPhone+"건)":"")+(fail>0?" (실패 "+fail+"건)":""));
 });
 
 // ── CSV 업로드 ──
