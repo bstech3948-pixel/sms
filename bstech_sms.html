@@ -157,7 +157,7 @@ input { width:100%; padding:9px 10px; border:1px solid #e5e7eb; border-radius:8p
 
     <div class="info-box" style="margin-top:8px;">
       📱 핸드폰 바코드 스캔 페이지<br>
-      <a href="https://script.google.com/macros/s/AKfycbx8Yd6gR0g-nFm3j6u7tIFrgfac3kMfDkSYYEH-3qrjiyIh861QQ0LOr6r_0XsDDWZJ/exec?type=scanner" target="_blank" style="color:#1d4ed8; font-weight:600;">여기를 클릭해서 핸드폰으로 공유하세요!</a>
+      <a href="https://script.google.com/macros/s/AKfycbzR_jTiMCBSCnjmlYKsmmiqItnv_BIlirSDIw_VsyPLkF2rhfZDDqtgghdVtu0hUlFB/exec?type=scanner" target="_blank" style="color:#1d4ed8; font-weight:600;">여기를 클릭해서 핸드폰으로 공유하세요!</a>
     </div>
   </div>
 
@@ -214,7 +214,7 @@ const ALIGO_KEY  = "6t02gb2cqksv1tuvgw0yyd94d0e80y46";
 const ALIGO_ID   = "csbstech";
 const SENDER     = "01071543948";
 const ACCOUNT    = "국민은행 282437-04-005416 (창성비에스)";
-const APPS_URL   = "https://script.google.com/macros/s/AKfycbx8Yd6gR0g-nFm3j6u7tIFrgfac3kMfDkSYYEH-3qrjiyIh861QQ0LOr6r_0XsDDWZJ/exec";
+const APPS_URL   = "https://script.google.com/macros/s/AKfycbzR_jTiMCBSCnjmlYKsmmiqItnv_BIlirSDIw_VsyPLkF2rhfZDDqtgghdVtu0hUlFB/exec";
 
 // ── CSV 컬럼 위치 ──
 const COL_NAME=2, COL_MEMO=3, COL_TOTAL=14, COL_STATUS=15, COL_TRACKING=17;
@@ -250,6 +250,13 @@ function showToast(msg, isError) {
 function extractPhone(text) {
   const m = String(text||"").match(/01[0-9][-\s]?\d{3,4}[-\s]?\d{4}/);
   return m ? m[0].replace(/[-\s]/g,"") : null;
+}
+
+function formatPhone(num) {
+  const digits = String(num||"").replace(/[^\d]/g,"");
+  if (digits.length===11) return digits.substring(0,3)+"-"+digits.substring(3,7)+"-"+digits.substring(7,11);
+  if (digits.length===10) return digits.substring(0,3)+"-"+digits.substring(3,6)+"-"+digits.substring(6,10);
+  return num;
 }
 
 function normalizeShopName(name) {
@@ -500,7 +507,7 @@ function renderScanList() {
       : '<div class="scan-nomatch">❌ 접수내역에서 찾지 못했어요</div>';
 
     // 연락처 자동 찾기
-    const autoPhone = rec ? (extractPhone(rec.memo) || findPhoneByName(rec.name) || "") : "";
+    const autoPhone = rec ? formatPhone(extractPhone(rec.memo) || findPhoneByName(rec.name) || "") : "";
     // 문자 미리보기 자동 생성
     const previewMsg = rec ? buildMessage(rec.name, rec.total, s.tracking, rec.items) : "";
 
@@ -730,7 +737,7 @@ function handleSearch() {
         '<div class="found-row"><span class="found-label">진행사항</span><span class="found-val">'+esc(found.status||"-")+'</span></div>'+
         '<div class="found-row"><span class="found-label">송장번호 전체</span><span class="found-val">'+esc(found.tracking)+'</span></div>'+
       '</div>';
-    const phone = extractPhone(found.memo)||findPhoneByName(found.name)||"";
+    const phone = formatPhone(extractPhone(found.memo)||findPhoneByName(found.name)||"");
     document.getElementById("phoneInput").value = phone;
     document.getElementById("phoneWarn").innerHTML = phone ? "" :
       '<div class="match-fail">⚠️ 연락처를 자동으로 찾지 못했어요. 직접 입력해주세요.</div>';

@@ -73,7 +73,7 @@ body { font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif; background:
 
 <script>
 // ── 설정 ──
-var APPS_URL = "https://script.google.com/macros/s/AKfycbx8Yd6gR0g-nFm3j6u7tIFrgfac3kMfDkSYYEH-3qrjiyIh861QQ0LOr6r_0XsDDWZJ/exec";
+var APPS_URL = "https://script.google.com/macros/s/AKfycbzR_jTiMCBSCnjmlYKsmmiqItnv_BIlirSDIw_VsyPLkF2rhfZDDqtgghdVtu0hUlFB/exec";
 var scanHistory = [];
 var lastScan = "";
 var lastScanTime = 0;
@@ -137,15 +137,22 @@ function saveScan(tracking) {
   fetch(APPS_URL + "?type=addScan&tracking=" + encodeURIComponent(formatted))
     .then(function(res) { return res.text(); })
     .then(function(result) {
+      // 응답에서 상호명/품목 추출 (저장 완료: 송장 / 상호명 / 품목)
+      var parts = result.split(" / ");
+      var matchName = parts.length >= 2 ? parts[1] : "";
+      var matchItems = parts.length >= 3 ? parts[2] : "";
+      var displayInfo = matchName ? (matchName + (matchItems ? " · " + matchItems : "")) : "";
+
       scanHistory.unshift({
         tracking: formatted,
         time: new Date().toLocaleTimeString("ko-KR"),
-        status: "ok"
+        status: "ok",
+        name: matchName,
+        items: matchItems
       });
       renderList();
-      showResult("✅ 저장 완료! " + formatted, "success");
+      showResult("✅ 저장 완료! " + formatted + (displayInfo ? "\n" + displayInfo : ""), "success");
       document.getElementById("manualInput").value = "";
-      // 진동 피드백
       if (navigator.vibrate) navigator.vibrate(200);
     })
     .catch(function(err) {
@@ -170,10 +177,13 @@ function renderList() {
   list.innerHTML = scanHistory.map(function(s) {
     var statusClass = s.status === "ok" ? "status-ok" : "status-fail";
     var statusText = s.status === "ok" ? "저장완료" : "확인필요";
-    return '<div class="scan-item">' +
-      '<div><div class="scan-no">' + s.tracking + '</div>' +
-      '<div class="scan-time">' + s.time + '</div></div>' +
-      '<span class="scan-status ' + statusClass + '">' + statusText + '</span></div>';
+    return '<div class="scan-item" style="display:block;">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;">' +
+      '<span class="scan-no">' + s.tracking + '</span>' +
+      '<span class="scan-status ' + statusClass + '">' + statusText + '</span></div>' +
+      '<div class="scan-time">' + s.time + '</div>' +
+      (s.name ? '<div style="font-size:12px;color:#15803d;margin-top:2px;">✅ '+s.name+(s.items?' · '+s.items:'')+'</div>' : '') +
+      '</div>';
   }).join("");
 }
 
