@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>(주)창성비에스 송장 스캔</title>
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif; background:#f9fafb; }
+.wrap { max-width:480px; margin:0 auto; padding-bottom:40px; }
+.header { background:#1f2937; padding:16px; text-align:center; }
+.header h1 { color:#fff; font-size:16px; }
+.header p { color:rgba(255,255,255,0.5); font-size:11px; margin-top:4px; }
+.body { padding:12px; }
+.card { background:#fff; border-radius:12px; padding:14px; margin-bottom:10px; box-shadow:0 1px 3px rgba(0,0,0,0.06); }
+.card-title { font-size:14px; font-weight:700; color:#374151; margin-bottom:10px; }
+#reader { width:100%; border-radius:8px; overflow:hidden; }
+.scan-result { margin-top:10px; padding:10px; border-radius:8px; font-size:13px; font-weight:600; text-align:center; display:none; }
+.success { background:#dcfce7; color:#15803d; display:block; }
+.error { background:#fef2f2; color:#b91c1c; display:block; }
+.saving { background:#eef2ff; color:#3730a3; display:block; }
+.manual-row { display:flex; gap:8px; margin-top:10px; }
+.manual-row input { flex:1; padding:10px; border:1px solid #e5e7eb; border-radius:8px; font-size:15px; font-family:inherit; }
+.manual-row button { background:#1f2937; color:#fff; border:none; border-radius:8px; padding:0 16px; font-size:14px; font-weight:600; cursor:pointer; white-space:nowrap; font-family:inherit; }
+.count-badge { background:#1f2937; color:#fff; padding:6px 14px; border-radius:20px; font-size:13px; font-weight:600; text-align:center; margin-bottom:10px; }
+.scan-list { max-height:300px; overflow-y:auto; }
+.scan-item { display:flex; justify-content:space-between; align-items:center; padding:10px; background:#f9fafb; border-radius:8px; margin-bottom:6px; }
+.scan-no { font-size:14px; font-weight:600; color:#1f2937; }
+.scan-time { font-size:11px; color:#9ca3af; }
+.scan-status { font-size:11px; padding:2px 8px; border-radius:10px; }
+.status-ok { background:#dcfce7; color:#15803d; }
+.status-fail { background:#fef2f2; color:#b91c1c; }
+.empty-msg { text-align:center; color:#9ca3af; font-size:13px; padding:20px 0; }
+.start-btn { width:100%; padding:14px; background:#15803d; color:#fff; border:none; border-radius:10px; font-size:15px; font-weight:700; cursor:pointer; font-family:inherit; margin-bottom:10px; }
+.stop-btn { width:100%; padding:14px; background:#ef4444; color:#fff; border:none; border-radius:10px; font-size:15px; font-weight:700; cursor:pointer; font-family:inherit; margin-bottom:10px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="header">
+    <h1>🍖 (주)창성비에스 송장 스캔</h1>
+    <p>택배 바코드를 카메라에 비추세요</p>
+  </div>
+  <div class="body">
+    <div class="card">
+      <div class="card-title">📷 바코드 스캔</div>
+
+      <label class="start-btn" id="photoLabel" style="display:block; text-align:center; cursor:pointer;">
+        📷 바코드 촬영하기
+        <input type="file" accept="image/*" capture="environment" id="photoInput" style="display:none;">
+      </label>
+
+      <div id="reader" style="display:none;"></div>
+      <div class="scan-result" id="scanResult"></div>
+      <div id="decodeStatus" style="text-align:center; font-size:12px; color:#6b7280; margin-top:8px;"></div>
+
+      <div class="manual-row">
+        <input type="text" id="manualInput" placeholder="직접 입력 (송장번호)" inputmode="numeric">
+        <button id="manualBtn">저장</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="count-badge" id="countBadge">오늘 스캔: 0건</div>
+      <div class="card-title">스캔 목록</div>
+      <div class="scan-list" id="scanList">
+        <div class="empty-msg">아직 스캔한 송장이 없어요</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── 설정 ──
+var APPS_URL = "https://script.google.com/macros/s/AKfycbx8Yd6gR0g-nFm3j6u7tIFrgfac3kMfDkSYYEH-3qrjiyIh861QQ0LOr6r_0XsDDWZJ/exec";
+var scanHistory = [];
+var lastScan = "";
+var lastScanTime = 0;
+
+// ── 결과 표시 ──
+function showResult(msg, type) {
+  var el = document.getElementById("scanResult");
+  el.className = "scan-result " + type;
+  el.textContent = msg;
+  el.style.display = "block";
+  if (type !== "saving") {
+    setTimeout(function(){ el.style.display = "none"; }, 3000);
+  }
+}
+
+// ── 구글 시트에 저장 ──
+function saveScan(tracking) {
+  if (!tracking) return;
+  tracking = tracking.trim();
+
+  // 중복 방지 (같은 번호 2초 이내 재스캔 방지)
+  var now = Date.now();
+  if (tracking === lastScan && (now - lastScanTime) < 2000) return;
+  lastScan = tracking;
+  lastScanTime = now;
+
+  // 이미 스캔한 번호인지 확인
+  for (var i = 0; i < scanHistory.length; i++) {
+    if (scanHistory[i].tracking === tracking) {
+      showResult("이미 스캔한 번호예요: " + tracking, "error");
+      return;
+    }
+  }
+
+  showResult("저장 중... " + tracking, "saving");
+
+  // 앱스 스크립트에 저장 요청
+  fetch(APPS_URL + "?type=addScan&tracking=" + encodeURIComponent(tracking))
+    .then(function(res) { return res.text(); })
+    .then(function(result) {
+      scanHistory.unshift({
+        tracking: tracking,
+        time: new Date().toLocaleTimeString("ko-KR"),
+        status: "ok"
+      });
+      renderList();
+      showResult("✅ 저장 완료! " + tracking, "success");
+      document.getElementById("manualInput").value = "";
+      // 진동 피드백
+      if (navigator.vibrate) navigator.vibrate(200);
+    })
+    .catch(function(err) {
+      scanHistory.unshift({
+        tracking: tracking,
+        time: new Date().toLocaleTimeString("ko-KR"),
+        status: "fail"
+      });
+      renderList();
+      showResult("⚠️ 저장 요청은 보냈어요 (확인 필요)", "error");
+    });
+}
+
+// ── 목록 렌더링 ──
+function renderList() {
+  var list = document.getElementById("scanList");
+  document.getElementById("countBadge").textContent = "오늘 스캔: " + scanHistory.length + "건";
+  if (scanHistory.length === 0) {
+    list.innerHTML = '<div class="empty-msg">아직 스캔한 송장이 없어요</div>';
+    return;
+  }
+  list.innerHTML = scanHistory.map(function(s) {
+    var statusClass = s.status === "ok" ? "status-ok" : "status-fail";
+    var statusText = s.status === "ok" ? "저장완료" : "확인필요";
+    return '<div class="scan-item">' +
+      '<div><div class="scan-no">' + s.tracking + '</div>' +
+      '<div class="scan-time">' + s.time + '</div></div>' +
+      '<span class="scan-status ' + statusClass + '">' + statusText + '</span></div>';
+  }).join("");
+}
+
+// ── 사진 촬영으로 바코드 인식 ──
+document.getElementById("photoInput").addEventListener("change", function(e) {
+  var file = e.target.files[0];
+  if (!file) return;
+
+  document.getElementById("decodeStatus").textContent = "바코드 인식 중...";
+
+  // 택배 송장 바코드 형식만 인식 (1D 바코드)
+  var html5QrCode = new Html5Qrcode("reader", {
+    formatsToSupport: [
+      Html5QrcodeSupportedFormats.CODE_128,
+      Html5QrcodeSupportedFormats.CODE_39,
+      Html5QrcodeSupportedFormats.ITF,
+      Html5QrcodeSupportedFormats.EAN_13,
+      Html5QrcodeSupportedFormats.EAN_8,
+      Html5QrcodeSupportedFormats.CODABAR
+    ]
+  });
+
+  html5QrCode.scanFile(file, true)
+    .then(function(decodedText) {
+      document.getElementById("decodeStatus").textContent = "";
+
+      // 숫자와 하이픈만 추출
+      var cleaned = decodedText.replace(/[^0-9\-]/g, "");
+      if (!cleaned || cleaned.length < 8) {
+        showResult("❌ 송장번호가 아닌 것 같아요: " + decodedText, "error");
+        document.getElementById("decodeStatus").textContent = "다시 촬영해주세요. 바코드에 가까이 찍어주세요.";
+        return;
+      }
+
+      // 확인 팝업
+      var confirmed = confirm("스캔된 송장번호:\n" + cleaned + "\n\n이 번호가 맞나요?");
+      if (confirmed) {
+        saveScan(cleaned);
+      } else {
+        document.getElementById("decodeStatus").textContent = "취소했어요. 다시 촬영해주세요.";
+      }
+    })
+    .catch(function(err) {
+      document.getElementById("decodeStatus").textContent = "";
+      showResult("❌ 바코드를 인식하지 못했어요", "error");
+      document.getElementById("decodeStatus").innerHTML =
+        "다시 촬영해주세요!<br>" +
+        "<b>팁:</b> 바코드에 최대한 가까이, 밝은 곳에서 찍어주세요";
+    });
+
+  // 같은 파일 다시 선택 가능하도록 초기화
+  e.target.value = "";
+});
+
+// ── 직접 입력 ──
+document.getElementById("manualBtn").addEventListener("click", function() {
+  var val = document.getElementById("manualInput").value.trim();
+  if (val) saveScan(val);
+});
+
+document.getElementById("manualInput").addEventListener("keydown", function(e) {
+  if (e.key === "Enter") {
+    var val = this.value.trim();
+    if (val) saveScan(val);
+  }
+});
+</script>
+</body>
+</html>

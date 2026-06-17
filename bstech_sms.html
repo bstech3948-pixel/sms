@@ -1,0 +1,727 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>(주)창성비에스 문자 발송</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif; background:#f9fafb; color:#111827; }
+.wrap { max-width:480px; margin:0 auto; min-height:100vh; padding-bottom:40px; }
+.header { background:#1f2937; padding:20px 20px 16px; display:flex; justify-content:space-between; align-items:center; }
+.header-title { font-size:18px; font-weight:800; color:#fff; }
+.header-sub { font-size:12px; color:rgba(255,255,255,0.5); margin-top:2px; }
+.sender-badge { background:rgba(255,255,255,0.1); color:rgba(255,255,255,0.7); font-size:11px; padding:4px 10px; border-radius:20px; }
+.tabs { display:flex; background:#fff; border-bottom:1px solid #e5e7eb; }
+.tab { flex:1; padding:12px 4px; border:none; background:none; font-size:12px; color:#9ca3af; cursor:pointer; font-weight:500; }
+.tab.active { color:#1f2937; border-bottom:2px solid #1f2937; font-weight:700; }
+.body { padding:16px; display:none; }
+.body.active { display:block; }
+.card { background:#fff; border-radius:12px; padding:16px; margin-bottom:12px; box-shadow:0 1px 3px rgba(0,0,0,0.06); }
+.card-title { font-size:14px; font-weight:700; color:#374151; margin-bottom:12px; }
+.help-text { font-size:12px; color:#6b7280; line-height:1.7; margin-bottom:10px; }
+input { width:100%; padding:9px 10px; border:1px solid #e5e7eb; border-radius:8px; font-size:14px; color:#111827; box-sizing:border-box; font-family:inherit; }
+.search-row { display:flex; gap:8px; }
+.search-row input { flex:1; }
+.btn { background:#1f2937; color:#fff; border:none; border-radius:8px; font-size:14px; font-weight:600; cursor:pointer; font-family:inherit; padding:10px 16px; }
+.btn:disabled { opacity:0.6; cursor:not-allowed; }
+.btn-green { background:#15803d; }
+.btn-blue { background:#1d4ed8; }
+.btn-full { width:100%; padding:16px; border-radius:12px; font-size:16px; font-weight:700; margin-top:4px; }
+.btn-red { background:#ef4444; font-size:12px; padding:6px 14px; }
+.btn-sm { font-size:12px; padding:6px 12px; }
+.found-box { margin-top:12px; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px; padding:12px; }
+.found-row { display:flex; justify-content:space-between; font-size:13px; padding:4px 0; gap:8px; }
+.found-label { color:#15803d; font-weight:500; flex-shrink:0; }
+.found-val { color:#14532d; font-weight:700; text-align:right; }
+.not-found-box { margin-top:12px; background:#fef2f2; border:1px solid #fecaca; border-radius:8px; padding:12px; font-size:13px; color:#b91c1c; line-height:1.7; }
+.preview-box { background:#f3f4f6; border-radius:10px; padding:12px; }
+.bubble { background:#fff; border-radius:10px; padding:12px 14px; font-size:13px; line-height:1.9; color:#374151; box-shadow:0 1px 3px rgba(0,0,0,0.08); white-space:pre-wrap; width:100%; border:none; resize:none; outline:none; box-sizing:border-box; font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif; }
+.warn-box { background:#fef3c7; border:1px solid #fde68a; border-radius:10px; padding:12px; font-size:12px; color:#92400e; margin-bottom:12px; line-height:1.7; }
+.info-box { background:#eef2ff; border:1px solid #c7d2fe; border-radius:10px; padding:12px; font-size:12px; color:#3730a3; margin-bottom:12px; line-height:1.7; }
+.match-fail { font-size:12px; color:#b45309; background:#fffbeb; padding:6px 10px; border-radius:6px; margin-top:6px; }
+.file-tag { margin-top:10px; font-size:12px; color:#374151; background:#f3f4f6; padding:8px 10px; border-radius:8px; }
+.sync-row { display:flex; align-items:center; gap:8px; margin-bottom:10px; flex-wrap:wrap; }
+.sync-status { font-size:12px; color:#6b7280; }
+.record-list { max-height:280px; overflow-y:auto; display:flex; flex-direction:column; gap:6px; }
+.record-row { background:#f9fafb; border-radius:8px; padding:8px 10px; }
+.record-top { display:flex; justify-content:space-between; font-size:13px; }
+.record-name { color:#374151; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:60%; }
+.record-total { color:#1f2937; font-weight:700; }
+.record-sub { font-size:11px; color:#9ca3af; margin-top:2px; }
+.scan-row { display:flex; justify-content:space-between; align-items:center; padding:10px 12px; background:#f9fafb; border-radius:8px; margin-bottom:6px; border:1px solid #e5e7eb; }
+.scan-info { flex:1; }
+.scan-no { font-size:13px; font-weight:600; color:#1f2937; }
+.scan-time { font-size:11px; color:#9ca3af; margin-top:2px; }
+.scan-match { font-size:12px; color:#15803d; margin-top:2px; font-weight:500; }
+.scan-nomatch { font-size:12px; color:#b91c1c; margin-top:2px; }
+.empty { text-align:center; color:#9ca3af; padding-top:40px; font-size:14px; }
+.hist-card { background:#fff; border-radius:12px; padding:14px; margin-bottom:10px; box-shadow:0 1px 3px rgba(0,0,0,0.06); }
+.hist-top { display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; flex-wrap:wrap; gap:4px; }
+.hist-name { font-size:14px; font-weight:700; color:#111827; }
+.hist-time { font-size:11px; color:#9ca3af; margin-bottom:8px; }
+.hist-msg { font-size:12px; color:#6b7280; line-height:1.8; white-space:pre-wrap; background:#f9fafb; border-radius:8px; padding:8px 10px; }
+.toast { position:fixed; bottom:30px; left:50%; transform:translateX(-50%); color:#fff; padding:12px 24px; border-radius:24px; font-size:14px; font-weight:600; box-shadow:0 4px 12px rgba(0,0,0,0.2); z-index:999; max-width:90%; text-align:center; display:none; }
+.badge-success { background:#dcfce7; color:#15803d; font-size:11px; padding:2px 8px; border-radius:10px; }
+.badge-warn { background:#fef3c7; color:#92400e; font-size:11px; padding:2px 8px; border-radius:10px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="header">
+    <div>
+      <div class="header-title">🍖 (주)창성비에스</div>
+      <div class="header-sub">송장번호 조회 자동 문자 발송</div>
+    </div>
+    <div class="sender-badge">발신: 010-7154-3948</div>
+  </div>
+
+  <div class="tabs">
+    <button class="tab active" data-tab="send">📨 문자 발송</button>
+    <button class="tab" data-tab="scan">📱 스캔 발송</button>
+    <button class="tab" data-tab="data">📂 데이터</button>
+    <button class="tab" data-tab="history">📋 내역 (<span id="historyCount">0</span>)</button>
+  </div>
+
+  <!-- 문자 발송 탭 -->
+  <div class="body active" id="tab-send">
+    <div class="warn-box" id="noDataWarn">
+      ⚠️ 접수내역 데이터가 아직 없어요. <b>데이터</b> 탭에서 구글 시트를 불러와주세요.
+    </div>
+    <div class="info-box">
+      ℹ️ 정확한 발송 결과는 알리고 홈페이지 <b>문자보내기 → 전송내역</b>에서 확인해주세요.
+    </div>
+
+    <div class="card">
+      <div class="card-title">송장번호로 조회</div>
+      <div class="search-row">
+        <input type="text" id="trackingInput" placeholder="예: 6985-1233-5053">
+        <button class="btn" id="searchBtn">🔍 조회</button>
+      </div>
+      <div id="foundBox"></div>
+    </div>
+
+    <div id="afterFound" style="display:none;">
+      <div class="card">
+        <div class="card-title">연락처</div>
+        <input type="text" id="phoneInput" placeholder="010-0000-0000">
+        <div id="phoneWarn"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">
+          문자 미리보기 (직접 수정 가능)
+          <span id="charCount" style="font-size:12px;color:#9ca3af;font-weight:400;margin-left:8px;"></span>
+        </div>
+        <div class="preview-box">
+          <textarea class="bubble" id="previewBubble" rows="10"></textarea>
+        </div>
+      </div>
+
+      <button class="btn btn-full" id="sendBtn">📨 문자 발송</button>
+    </div>
+  </div>
+
+  <!-- 스캔 발송 탭 -->
+  <div class="body" id="tab-scan">
+    <div class="card">
+      <div class="card-title">핸드폰 스캔 목록</div>
+      <p class="help-text">핸드폰으로 바코드 스캔한 송장번호 목록이에요. 버튼을 눌러 최신 목록을 불러온 후 일괄 발송하세요!</p>
+      <div class="sync-row">
+        <button class="btn btn-blue" id="syncScanBtn">🔄 스캔 목록 불러오기</button>
+        <span class="sync-status" id="scanSyncStatus">아직 불러오지 않았어요</span>
+      </div>
+      <div id="scanSyncTag"></div>
+    </div>
+
+    <div id="scanListCard" style="display:none;">
+      <div class="card">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+          <div class="card-title" style="margin-bottom:0;">스캔된 송장 목록</div>
+          <button class="btn btn-green btn-sm" id="sendAllScansBtn">📨 전체 문자 발송</button>
+        </div>
+        <div id="scanList"></div>
+      </div>
+    </div>
+
+    <div class="info-box" style="margin-top:8px;">
+      📱 핸드폰 바코드 스캔 페이지<br>
+      <a href="https://script.google.com/macros/s/AKfycbx8Yd6gR0g-nFm3j6u7tIFrgfac3kMfDkSYYEH-3qrjiyIh861QQ0LOr6r_0XsDDWZJ/exec?type=scanner" target="_blank" style="color:#1d4ed8; font-weight:600;">여기를 클릭해서 핸드폰으로 공유하세요!</a>
+    </div>
+  </div>
+
+  <!-- 데이터 탭 -->
+  <div class="body" id="tab-data">
+    <div class="card">
+      <div class="card-title">① 구글 시트 실시간 연동 (추천)</div>
+      <p class="help-text">버튼 한 번으로 구글 시트 최신 데이터를 바로 불러와요!</p>
+      <div class="sync-row">
+        <button class="btn btn-green" id="syncBtn">🔄 구글 시트에서 불러오기</button>
+        <span class="sync-status" id="syncStatus">아직 불러오지 않았어요</span>
+      </div>
+      <div id="syncTag"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">② CSV 파일 직접 업로드 (수동)</div>
+      <p class="help-text">구글 시트 연동이 안 될 때 CSV 파일을 직접 올려주세요.</p>
+      <input type="file" id="recordFile" accept=".csv" style="display:none;">
+      <button class="btn" id="recordBtn">📁 접수내역 CSV 선택</button>
+      <div id="recordFileTag"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">③ 거래처연락처 (구글 시트 연동)</div>
+      <p class="help-text">구글 시트의 "거래처연락처" 탭에서 자동으로 불러와요.</p>
+      <div class="sync-row">
+        <button class="btn btn-green" id="syncContactBtn">🔄 거래처연락처 불러오기</button>
+        <span class="sync-status" id="contactSyncStatus">아직 불러오지 않았어요</span>
+      </div>
+      <div id="contactSyncTag"></div>
+    </div>
+
+    <div class="card" id="recordPreviewCard" style="display:none;">
+      <div class="card-title">불러온 접수내역 미리보기 (최근 20건)</div>
+      <div class="record-list" id="recordList"></div>
+    </div>
+  </div>
+
+  <!-- 내역 탭 -->
+  <div class="body" id="tab-history">
+    <div style="text-align:right; margin-bottom:8px;">
+      <button class="btn btn-red" id="clearHistoryBtn">내역 전체 삭제</button>
+    </div>
+    <div id="historyList"><div class="empty">아직 발송 내역이 없어요</div></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ── 설정 ──
+const ALIGO_KEY  = "6t02gb2cqksv1tuvgw0yyd94d0e80y46";
+const ALIGO_ID   = "csbstech";
+const SENDER     = "01071543948";
+const ACCOUNT    = "국민은행 282437-04-005416 (창성비에스)";
+const APPS_URL   = "https://script.google.com/macros/s/AKfycbx8Yd6gR0g-nFm3j6u7tIFrgfac3kMfDkSYYEH-3qrjiyIh861QQ0LOr6r_0XsDDWZJ/exec";
+
+// ── CSV 컬럼 위치 ──
+const COL_NAME=2, COL_MEMO=3, COL_TOTAL=14, COL_STATUS=15, COL_TRACKING=17;
+const ITEM_SLOTS = [{item:4,qty:6},{item:7,qty:9},{item:10,qty:12}];
+
+// ── 상태 ──
+const HISTORY_KEY = "bstech_sms_history";
+let records  = [];
+let contacts = [];
+let matched  = null;
+let scanList = [];
+let history  = [];
+try { history = JSON.parse(localStorage.getItem(HISTORY_KEY)||"[]"); } catch(e) { history=[]; }
+
+function saveHistory() {
+  try { localStorage.setItem(HISTORY_KEY, JSON.stringify(history)); } catch(e) {}
+}
+
+// ── 유틸 ──
+function esc(s) {
+  return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+
+function showToast(msg, isError) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.style.background = isError ? "#ef4444" : "#10b981";
+  t.style.display = "block";
+  clearTimeout(t._timer);
+  t._timer = setTimeout(()=>{ t.style.display="none"; }, 4000);
+}
+
+function extractPhone(text) {
+  const m = String(text||"").match(/01[0-9][-\s]?\d{3,4}[-\s]?\d{4}/);
+  return m ? m[0].replace(/[-\s]/g,"") : null;
+}
+
+function normalizeShopName(name) {
+  let n = String(name||"");
+  n = n.replace(/\([^)]*\)/g,"");
+  n = n.replace(/^\d{4}[.\s]*/,"");
+  n = n.replace(/\s+\d{4}$/,"");
+  n = n.replace(/[^\uAC00-\uD7A3a-zA-Z0-9]/g,"");
+  return n.trim();
+}
+
+function findPhoneByName(targetName) {
+  const target = normalizeShopName(targetName);
+  if (!target) return null;
+  for (const c of contacts) {
+    if (normalizeShopName(c.name)===target) return c.phone;
+  }
+  let best=null, bestLen=0;
+  for (const c of contacts) {
+    const n = normalizeShopName(c.name);
+    if (n.length<2) continue;
+    if (target.includes(n)||n.includes(target)) {
+      if (n.length>bestLen) { bestLen=n.length; best=c.phone; }
+    }
+  }
+  return best;
+}
+
+function buildItemSummary(row) {
+  const parts = [];
+  for (const slot of ITEM_SLOTS) {
+    const name = String(row[slot.item]||"").trim();
+    const qty  = String(row[slot.qty] ||"").trim();
+    if (!name) continue;
+    parts.push(qty ? name+" "+qty+"개" : name);
+  }
+  return parts.join(", ");
+}
+
+function parseRecords(rows) {
+  const parsed = [];
+  for (let i=1; i<rows.length; i++) {
+    const r = rows[i].map((v)=>String(v===null||v===undefined?"":v));
+    const name     = r[COL_NAME]    .trim();
+    const memo     = r[COL_MEMO]    .trim();
+    const total    = r[COL_TOTAL]   .trim();
+    const status   = r[COL_STATUS]  .trim();
+    const tracking = r[COL_TRACKING].trim();
+    const items    = buildItemSummary(r);
+    if (!name && !tracking) continue;
+    parsed.push({name, memo, total, status, tracking, items});
+  }
+  return parsed;
+}
+
+function parseCSV(text) {
+  const rows = [];
+  let row=[], field="", inQuotes=false;
+  for (let i=0; i<text.length; i++) {
+    const ch=text[i], next=text[i+1];
+    if (inQuotes) {
+      if (ch==='"'&&next==='"') { field+='"'; i++; }
+      else if (ch==='"') inQuotes=false;
+      else field+=ch;
+    } else {
+      if (ch==='"') inQuotes=true;
+      else if (ch===",") { row.push(field); field=""; }
+      else if (ch==="\n"||ch==="\r") {
+        if (ch==="\r"&&next==="\n") i++;
+        row.push(field); field="";
+        if (row.length>1||row[0]!=="") rows.push(row);
+        row=[];
+      } else field+=ch;
+    }
+  }
+  if (field!==""||row.length) { row.push(field); rows.push(row); }
+  return rows;
+}
+
+function formatMoney(val) {
+  const num = String(val||"").replace(/[^\d]/g,"");
+  if (!num) return "확인 요망";
+  return Number(num).toLocaleString("ko-KR") + "원";
+}
+
+function buildMessage(name, total, tracking, items) {
+  const itemLine = items ? "품목: "+items+"\n" : "";
+  return "[(주)창성비에스] "+name+" 고객님\n"+
+    "재코팅 물품이 발송되었습니다\n"+
+    itemLine+"송장번호: "+(tracking||"확인 요망")+"\n\n"+
+    "입금 계좌 안내\n"+
+    ACCOUNT+"\n"+
+    "입금금액: "+formatMoney(total)+"\n\n"+
+    "감사합니다\n"+
+    "문의: 010-7154-3948";
+}
+
+async function sendSMS(receiver, msg) {
+  const params = new URLSearchParams({
+    key:ALIGO_KEY, user_id:ALIGO_ID, sender:SENDER,
+    receiver, msg,
+    msg_type: msg.replace(/\s/g,"").length>90 ? "LMS" : "SMS",
+  });
+  try {
+    const res = await fetch("https://apis.aligo.in/send/", {
+      method:"POST",
+      headers:{"Content-Type":"application/x-www-form-urlencoded"},
+      body:params.toString(),
+    });
+    const data = await res.json();
+    data._responseReceived = true;
+    return data;
+  } catch(e) {
+    return { result_code:-1, message:e.message, _responseReceived:false };
+  }
+}
+
+function setRecords(parsed) {
+  records = parsed;
+  document.getElementById("recordCount2") && (document.getElementById("recordCount2").textContent = records.length);
+  document.getElementById("noDataWarn").style.display = records.length ? "none" : "block";
+  renderRecordPreview();
+}
+
+// ── 탭 전환 ──
+document.querySelectorAll(".tab").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".tab").forEach((b)=>b.classList.remove("active"));
+    document.querySelectorAll(".body").forEach((b)=>b.classList.remove("active"));
+    btn.classList.add("active");
+    document.getElementById("tab-"+btn.dataset.tab).classList.add("active");
+  });
+});
+
+// ── 구글 시트 불러오기 ──
+document.getElementById("syncBtn").addEventListener("click", async () => {
+  const btn    = document.getElementById("syncBtn");
+  const status = document.getElementById("syncStatus");
+  const tag    = document.getElementById("syncTag");
+  btn.disabled = true;
+  btn.textContent = "⏳ 불러오는 중...";
+  status.textContent = "구글 시트에서 데이터를 가져오고 있어요...";
+  try {
+    const res = await fetch(APPS_URL+"?type=records");
+    if (!res.ok) throw new Error("서버 오류 ("+res.status+")");
+    const data = await res.json();
+    const parsed = parseRecords(data);
+    setRecords(parsed);
+    const now = new Date().toLocaleString("ko-KR");
+    status.textContent = "마지막 업데이트: "+now;
+    tag.innerHTML = '<div class="file-tag">✅ 구글 시트 "최신접수내역" · '+parsed.length+'건 불러옴</div>';
+    showToast("✅ 구글 시트에서 "+parsed.length+"건 불러오기 완료!");
+  } catch(e) {
+    status.textContent = "불러오기 실패";
+    tag.innerHTML = '<div style="color:#b91c1c;font-size:12px;margin-top:8px;">❌ '+esc(e.message)+'</div>';
+    showToast("❌ 불러오기 실패: "+e.message, true);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "🔄 구글 시트에서 불러오기";
+  }
+});
+
+// ── 스캔 목록 불러오기 ──
+document.getElementById("syncScanBtn").addEventListener("click", async () => {
+  const btn    = document.getElementById("syncScanBtn");
+  const status = document.getElementById("scanSyncStatus");
+  btn.disabled = true;
+  btn.textContent = "⏳ 불러오는 중...";
+  status.textContent = "스캔 목록을 가져오고 있어요...";
+  try {
+    const res = await fetch(APPS_URL+"?type=scans");
+    if (!res.ok) throw new Error("서버 오류 ("+res.status+")");
+    const data = await res.json();
+
+    // 헤더 제외, 최신순 정렬
+    scanList = [];
+    for (let i=1; i<data.length; i++) {
+      const time     = String(data[i][0]||"").trim();
+      const tracking = String(data[i][1]||"").trim();
+      if (!tracking) continue;
+
+      // 접수내역에서 매칭
+      const rec = records.find((r) => {
+        if (!r.tracking) return false;
+        return r.tracking.split(/[\/,\s]+/).map((s)=>s.trim()).filter(Boolean).includes(tracking);
+      });
+      scanList.push({ time, tracking, record: rec || null });
+    }
+    scanList.reverse(); // 최신순
+
+    const now = new Date().toLocaleString("ko-KR");
+    status.textContent = "마지막 업데이트: "+now;
+    document.getElementById("scanSyncTag").innerHTML =
+      '<div class="file-tag">✅ 스캔 목록 '+scanList.length+'건 불러옴 · 접수내역 매칭: '+scanList.filter(s=>s.record).length+'건</div>';
+    renderScanList();
+    document.getElementById("scanListCard").style.display = "block";
+    showToast("✅ 스캔 목록 "+scanList.length+"건 불러오기 완료!");
+  } catch(e) {
+    status.textContent = "불러오기 실패";
+    document.getElementById("scanSyncTag").innerHTML = '<div style="color:#b91c1c;font-size:12px;margin-top:8px;">❌ '+esc(e.message)+'<br>먼저 데이터 탭에서 접수내역을 불러와주세요!</div>';
+    showToast("❌ 불러오기 실패: "+e.message, true);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "🔄 스캔 목록 불러오기";
+  }
+});
+
+function renderScanList() {
+  const list = document.getElementById("scanList");
+  if (scanList.length===0) {
+    list.innerHTML = '<div class="empty">스캔된 송장이 없어요</div>';
+    return;
+  }
+  list.innerHTML = scanList.map((s, idx) => {
+    const matchHtml = s.record
+      ? '<div class="scan-match">✅ '+esc(s.record.name)+' · '+esc(s.record.total)+'</div>'
+      : '<div class="scan-nomatch">❌ 접수내역에서 찾지 못했어요</div>';
+    const sentBadge = s.sent ? '<span class="badge-success">발송완료</span>' : '';
+    return (
+      '<div class="scan-row">'+
+        '<div class="scan-info">'+
+          '<div class="scan-no">'+esc(s.tracking)+' '+sentBadge+'</div>'+
+          '<div class="scan-time">'+esc(s.time)+'</div>'+
+          matchHtml+
+        '</div>'+
+        (s.record && !s.sent
+          ? '<button class="btn btn-sm" onclick="sendScanItem('+idx+')">발송</button>'
+          : '')+
+      '</div>'
+    );
+  }).join("");
+}
+
+// 개별 발송
+async function sendScanItem(idx) {
+  const item = scanList[idx];
+  if (!item || !item.record) return;
+
+  const phone = extractPhone(item.record.memo) || findPhoneByName(item.record.name);
+  if (!phone) {
+    const input = prompt(item.record.name+" 고객 연락처를 입력해주세요 (예: 01012345678):");
+    if (!input) return;
+    await doSendScan(idx, input.replace(/[-\s]/g,""));
+  } else {
+    await doSendScan(idx, phone);
+  }
+}
+
+async function doSendScan(idx, phone) {
+  const item = scanList[idx];
+  const rec  = item.record;
+  const msg  = buildMessage(rec.name, rec.total, item.tracking, rec.items);
+  const result = await sendSMS(phone, msg);
+
+  if (result._responseReceived && result.result_code===1) {
+    scanList[idx].sent = true;
+    addHistory(rec.name, phone, item.tracking, msg, "발송 성공");
+    renderScanList();
+    showToast("✅ "+rec.name+"님께 문자 발송 완료!");
+  } else if (result._responseReceived) {
+    showToast("❌ 발송 실패: "+(result.message||"오류"), true);
+  } else {
+    scanList[idx].sent = true;
+    addHistory(rec.name, phone, item.tracking, msg, "응답확인불가");
+    renderScanList();
+    showToast("⚠️ 요청은 보냈어요. 알리고 전송내역에서 확인해주세요.", true);
+  }
+}
+
+// 전체 일괄 발송
+document.getElementById("sendAllScansBtn").addEventListener("click", async () => {
+  const targets = scanList.filter(s=>s.record && !s.sent);
+  if (targets.length===0) { showToast("발송할 항목이 없어요!", true); return; }
+
+  if (!confirm(targets.length+"건을 일괄 발송할까요?")) return;
+
+  let success=0, fail=0;
+  for (let i=0; i<scanList.length; i++) {
+    const item = scanList[i];
+    if (!item.record || item.sent) continue;
+    const phone = extractPhone(item.record.memo) || findPhoneByName(item.record.name);
+    if (!phone) { fail++; continue; }
+    await doSendScan(i, phone);
+    success++;
+    await new Promise(r=>setTimeout(r,300));
+  }
+  showToast("✅ "+success+"건 발송 완료!"+(fail>0?" (연락처 없음 "+fail+"건)":""));
+});
+
+// ── CSV 업로드 ──
+document.getElementById("recordBtn").addEventListener("click", ()=>document.getElementById("recordFile").click());
+document.getElementById("recordFile").addEventListener("change", (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (evt) => {
+    try {
+      const rows = parseCSV(evt.target.result);
+      const parsed = parseRecords(rows);
+      setRecords(parsed);
+      document.getElementById("recordFileTag").innerHTML = '<div class="file-tag">📄 '+file.name+' 불러옴 ('+parsed.length+'건)</div>';
+      showToast("✅ 접수내역 "+parsed.length+"건 불러오기 완료!");
+    } catch(err) { showToast("❌ 파일 오류: "+err.message, true); }
+  };
+  reader.readAsText(file, "utf-8");
+});
+
+// ── 거래처연락처 구글 시트 연동 ──
+document.getElementById("syncContactBtn").addEventListener("click", async () => {
+  const btn    = document.getElementById("syncContactBtn");
+  const status = document.getElementById("contactSyncStatus");
+  const tag    = document.getElementById("contactSyncTag");
+  btn.disabled = true;
+  btn.textContent = "⏳ 불러오는 중...";
+  status.textContent = "거래처연락처를 가져오고 있어요...";
+  try {
+    const res = await fetch(APPS_URL+"?type=contacts");
+    if (!res.ok) throw new Error("서버 오류 ("+res.status+")");
+    const data = await res.json();
+    const parsed = [];
+    for (let i=1; i<data.length; i++) {
+      const name = String(data[i][0]||"").trim();
+      let phone = String(data[i][1]||"").replace(/^'/,"").replace(/[^\d]/g,"");
+      if (name && phone) parsed.push({name, phone});
+    }
+    contacts = parsed;
+    const now = new Date().toLocaleString("ko-KR");
+    status.textContent = "마지막 업데이트: "+now;
+    tag.innerHTML = '<div class="file-tag">✅ 거래처연락처 · '+contacts.length+'개 불러옴</div>';
+    showToast("✅ 거래처 연락처 "+parsed.length+"개 불러오기 완료!");
+  } catch(e) {
+    status.textContent = "불러오기 실패";
+    tag.innerHTML = '<div style="color:#b91c1c;font-size:12px;margin-top:8px;">❌ '+esc(e.message)+'</div>';
+    showToast("❌ 거래처 불러오기 실패: "+e.message, true);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "🔄 거래처연락처 불러오기";
+  }
+});
+
+function renderRecordPreview() {
+  const card = document.getElementById("recordPreviewCard");
+  const list = document.getElementById("recordList");
+  if (records.length===0) { card.style.display="none"; return; }
+  card.style.display="block";
+  list.innerHTML = records.slice(-20).reverse().map((r)=>(
+    '<div class="record-row">'+
+      '<div class="record-top"><span class="record-name">'+esc(r.name)+'</span><span class="record-total">'+esc(r.total)+'</span></div>'+
+      '<div class="record-sub">'+(r.items?esc(r.items)+" · ":"")+esc(r.status)+' · 송장: '+esc(r.tracking||"없음")+'</div>'+
+    '</div>'
+  )).join("");
+}
+
+// ── 송장번호 검색 ──
+document.getElementById("searchBtn").addEventListener("click", handleSearch);
+document.getElementById("trackingInput").addEventListener("keydown", (e)=>{ if(e.key==="Enter") handleSearch(); });
+
+function handleSearch() {
+  const query     = document.getElementById("trackingInput").value.trim();
+  const foundBox  = document.getElementById("foundBox");
+  const afterFound= document.getElementById("afterFound");
+
+  if (!query) { showToast("송장번호를 입력해주세요!", true); return; }
+  if (records.length===0) { showToast("먼저 데이터 탭에서 접수내역을 불러와주세요!", true); return; }
+
+  const found = records.find((r) => {
+    if (!r.tracking) return false;
+    return r.tracking.split(/[\/,\s]+/).map((s)=>s.trim()).filter(Boolean).includes(query);
+  });
+
+  if (found) {
+    matched = found;
+    foundBox.innerHTML =
+      '<div class="found-box">'+
+        '<div class="found-row"><span class="found-label">상호명</span><span class="found-val">'+esc(found.name)+'</span></div>'+
+        '<div class="found-row"><span class="found-label">품목</span><span class="found-val">'+esc(found.items||"없음")+'</span></div>'+
+        '<div class="found-row"><span class="found-label">총액</span><span class="found-val">'+esc(found.total)+'</span></div>'+
+        '<div class="found-row"><span class="found-label">진행사항</span><span class="found-val">'+esc(found.status||"-")+'</span></div>'+
+        '<div class="found-row"><span class="found-label">송장번호 전체</span><span class="found-val">'+esc(found.tracking)+'</span></div>'+
+      '</div>';
+    const phone = extractPhone(found.memo)||findPhoneByName(found.name)||"";
+    document.getElementById("phoneInput").value = phone;
+    document.getElementById("phoneWarn").innerHTML = phone ? "" :
+      '<div class="match-fail">⚠️ 연락처를 자동으로 찾지 못했어요. 직접 입력해주세요.</div>';
+    afterFound.style.display = "block";
+    updatePreview();
+    document.getElementById("sendBtn").textContent = "📨 "+found.name+"님께 문자 발송";
+  } else {
+    matched = null;
+    foundBox.innerHTML = '<div class="not-found-box">❌ "'+esc(query)+'" 와 일치하는 송장번호를 찾지 못했어요.</div>';
+    afterFound.style.display = "none";
+  }
+}
+
+document.getElementById("phoneInput").addEventListener("input", updatePreview);
+
+function updatePreview() {
+  if (!matched) return;
+  const tracking = document.getElementById("trackingInput").value.trim();
+  const msg = buildMessage(matched.name, matched.total, tracking, matched.items);
+  document.getElementById("previewBubble").value = msg;
+  updateCharCount();
+}
+
+function updateCharCount() {
+  const msg = document.getElementById("previewBubble").value;
+  const len = msg.replace(/\s/g,"").length;
+  document.getElementById("charCount").textContent = "("+len+"자 / "+(len>90?"LMS 25원":"SMS 8.4원")+")";
+}
+
+document.getElementById("previewBubble").addEventListener("input", updateCharCount);
+
+// ── 발송 ──
+document.getElementById("sendBtn").addEventListener("click", async () => {
+  if (!matched) { showToast("먼저 송장번호를 검색해주세요!", true); return; }
+  const phone = document.getElementById("phoneInput").value.trim();
+  if (!phone) { showToast("연락처를 입력해주세요!", true); return; }
+
+  const btn = document.getElementById("sendBtn");
+  btn.disabled = true;
+  btn.textContent = "⏳ 발송 요청 중...";
+
+  const tracking = document.getElementById("trackingInput").value.trim();
+  const msg      = document.getElementById("previewBubble").value;
+  const result   = await sendSMS(phone.replace(/-/g,""), msg);
+  btn.disabled   = false;
+
+  if (result._responseReceived && result.result_code===1) {
+    addHistory(matched.name, phone, tracking, msg, "발송 성공");
+    showToast("✅ "+matched.name+"님께 문자 발송 완료!");
+    resetAfterSend();
+  } else if (result._responseReceived && result.result_code!==1) {
+    showToast("❌ 발송 실패: "+(result.message||"오류"), true);
+    btn.textContent = "📨 "+matched.name+"님께 문자 발송";
+  } else {
+    addHistory(matched.name, phone, tracking, msg, "응답확인불가");
+    showToast("⚠️ 요청은 보냈어요. 알리고 전송내역에서 확인해주세요.", true);
+    resetAfterSend();
+  }
+});
+
+function addHistory(name, phone, tracking, msg, status) {
+  history.unshift({ time:new Date().toLocaleString("ko-KR"), name, phone, tracking, msg, status });
+  saveHistory();
+  renderHistory();
+}
+
+function resetAfterSend() {
+  document.getElementById("trackingInput").value = "";
+  document.getElementById("foundBox").innerHTML = "";
+  document.getElementById("afterFound").style.display = "none";
+  matched = null;
+}
+
+// ── 내역 ──
+document.getElementById("clearHistoryBtn").addEventListener("click", () => {
+  if (!confirm("발송 내역을 전부 삭제할까요?")) return;
+  history = [];
+  saveHistory();
+  renderHistory();
+  showToast("발송 내역이 삭제됐어요.");
+});
+
+function renderHistory() {
+  document.getElementById("historyCount").textContent = history.length;
+  const list = document.getElementById("historyList");
+  if (history.length===0) { list.innerHTML='<div class="empty">아직 발송 내역이 없어요</div>'; return; }
+  list.innerHTML = history.map((r) => {
+    const isUnsure = r.status==="응답확인불가";
+    const tag = isUnsure
+      ? '<span class="badge-warn">⚠ 알리고에서 직접 확인 필요</span>'
+      : '<span class="badge-success">✅ 발송 성공</span>';
+    return (
+      '<div class="hist-card">'+
+        '<div class="hist-top"><span class="hist-name">'+esc(r.name)+' ('+esc(r.phone)+')</span>'+tag+'</div>'+
+        '<div class="hist-time">'+esc(r.time)+' · 송장 '+esc(r.tracking)+'</div>'+
+        '<div class="hist-msg">'+esc(r.msg)+'</div>'+
+      '</div>'
+    );
+  }).join("");
+}
+
+renderHistory();
+</script>
+</body>
+</html>
