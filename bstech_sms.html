@@ -508,11 +508,21 @@ function markAsSent(trackings) {
 }
 
 function buildMergedGroups() {
+  // 발송 내역에서 이미 보낸 송장번호 추출
+  const historyTrackings = [];
+  history.forEach(h => {
+    if (!h.tracking) return;
+    h.tracking.split(/[,\s]+/).forEach(t => {
+      const trimmed = t.trim();
+      if (trimmed) historyTrackings.push(trimmed);
+    });
+  });
+
   const groups = {};
   scanList.forEach((s, idx) => {
     if (!s.record) return;
-    // 발송 완료 확인 (영구 저장된 목록에서)
-    if (sentTrackings.includes(s.tracking) || s.sent) {
+    // 발송 완료 확인 (영구 저장 + 발송 내역 둘 다 체크)
+    if (sentTrackings.includes(s.tracking) || historyTrackings.includes(s.tracking) || s.sent) {
       s.sent = true;
       return;
     }
