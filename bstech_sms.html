@@ -157,7 +157,7 @@ input { width:100%; padding:9px 10px; border:1px solid #e5e7eb; border-radius:8p
 
     <div class="info-box" style="margin-top:8px;">
       📱 핸드폰 바코드 스캔 페이지<br>
-      <a href="https://script.google.com/macros/s/AKfycbwLEuNMF1fgmgdVyjsqdCg-HgvFg4kmsRZGcQsj-D52o8PbOUeoMleRoijz-IpzF2vd/exec?type=scanner" target="_blank" style="color:#1d4ed8; font-weight:600;">여기를 클릭해서 핸드폰으로 공유하세요!</a>
+      <a href="https://script.google.com/macros/s/AKfycbwQ7gEI1Ssz_2FNBwZ3_vpxP9bpph48anKxJHkRczbk34KtE51xu9ybfTk0CfdtrLlD/exec?type=scanner" target="_blank" style="color:#1d4ed8; font-weight:600;">여기를 클릭해서 핸드폰으로 공유하세요!</a>
     </div>
   </div>
 
@@ -214,7 +214,7 @@ const ALIGO_KEY  = "6t02gb2cqksv1tuvgw0yyd94d0e80y46";
 const ALIGO_ID   = "csbstech";
 const SENDER     = "01071543948";
 const ACCOUNT    = "국민은행 282437-04-005416 (창성비에스)";
-const APPS_URL   = "https://script.google.com/macros/s/AKfycbwLEuNMF1fgmgdVyjsqdCg-HgvFg4kmsRZGcQsj-D52o8PbOUeoMleRoijz-IpzF2vd/exec";
+const APPS_URL   = "https://script.google.com/macros/s/AKfycbwQ7gEI1Ssz_2FNBwZ3_vpxP9bpph48anKxJHkRczbk34KtE51xu9ybfTk0CfdtrLlD/exec";
 
 // ── CSV 컬럼 위치 ──
 const COL_NAME=2, COL_MEMO=3, COL_TOTAL=14, COL_STATUS=15, COL_TRACKING=17;
@@ -306,8 +306,9 @@ function parseRecords(rows) {
     const status   = r[COL_STATUS]  .trim();
     const tracking = r[COL_TRACKING].trim();
     const items    = buildItemSummary(r);
+    const source   = r[1].trim() === "school" ? "school" : "main";
     if (!name && !tracking) continue;
-    parsed.push({name, memo, total, status, tracking, items});
+    parsed.push({name, memo, total, status, tracking, items, source});
   }
   return parsed;
 }
@@ -465,6 +466,7 @@ document.getElementById("syncScanBtn").addEventListener("click", async () => {
     for (let i=1; i<data.length; i++) {
       const time     = String(data[i][0]||"").trim();
       const tracking = String(data[i][1]||"").trim();
+      const source   = String(data[i][4]||"").trim(); // main 또는 school
       if (!tracking) continue;
 
       // 접수내역에서 매칭
@@ -472,7 +474,9 @@ document.getElementById("syncScanBtn").addEventListener("click", async () => {
         if (!r.tracking) return false;
         return r.tracking.split(/[\/,\s]+/).map((s)=>s.trim()).filter(Boolean).includes(tracking);
       });
-      scanList.push({ time, tracking, record: rec || null });
+      // 레코드의 인센티브 열이 "school"이면 학교접수
+      const isSchool = source === "school" || (rec && rec.source === "school");
+      scanList.push({ time, tracking, record: rec || null, source: isSchool ? "school" : "main" });
     }
     scanList.reverse(); // 최신순
 
@@ -532,10 +536,11 @@ function buildMergedGroups() {
         name: name,
         trackings: [],
         items: [],
-        total: s.record.total, // 첫 번째 건의 총액만 사용 (합산 안 함)
+        total: s.record.total,
         record: s.record,
         indices: [],
-        time: s.time
+        time: s.time,
+        source: s.source || s.record.source || "main"
       };
     }
     groups[name].trackings.push(s.tracking);
@@ -551,15 +556,26 @@ function buildMergedMessage(group) {
   const allItems = group.items.join(", ");
   const trackingList = group.trackings.join("\n");
 
-  return "[(주)창성비에스] " + group.name + " 고객님\n" +
-    "재코팅 물품이 발송되었습니다\n" +
-    (allItems ? "품목: " + allItems + "\n" : "") +
-    "송장번호: " + trackingList + "\n\n" +
-    "입금 계좌 안내\n" +
-    ACCOUNT + "\n" +
-    "입금금액: " + formatMoney(group.total) + "\n\n" +
-    "감사합니다\n" +
-    "문의: 010-7154-3948";
+  if (group.source === "school") {
+    // 학교접수: 입금계좌/금액 없이
+    return "[(주)창성비에스] " + group.name + " 고객님\n" +
+      "재코팅 물품이 발송되었습니다\n" +
+      (allItems ? "품목: " + allItems + "\n" : "") +
+      "송장번호: " + trackingList + "\n\n" +
+      "감사합니다\n" +
+      "문의: 010-7154-3948";
+  } else {
+    // 일반: 입금계좌/금액 포함
+    return "[(주)창성비에스] " + group.name + " 고객님\n" +
+      "재코팅 물품이 발송되었습니다\n" +
+      (allItems ? "품목: " + allItems + "\n" : "") +
+      "송장번호: " + trackingList + "\n\n" +
+      "입금 계좌 안내\n" +
+      ACCOUNT + "\n" +
+      "입금금액: " + formatMoney(group.total) + "\n\n" +
+      "감사합니다\n" +
+      "문의: 010-7154-3948";
+  }
 }
 
 function renderScanList() {
