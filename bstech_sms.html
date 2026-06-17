@@ -157,7 +157,7 @@ input { width:100%; padding:9px 10px; border:1px solid #e5e7eb; border-radius:8p
 
     <div class="info-box" style="margin-top:8px;">
       📱 핸드폰 바코드 스캔 페이지<br>
-      <a href="https://script.google.com/macros/s/AKfycbwQ7gEI1Ssz_2FNBwZ3_vpxP9bpph48anKxJHkRczbk34KtE51xu9ybfTk0CfdtrLlD/exec?type=scanner" target="_blank" style="color:#1d4ed8; font-weight:600;">여기를 클릭해서 핸드폰으로 공유하세요!</a>
+      <a href="https://script.google.com/macros/s/AKfycbyBlatSXyWdlBJ9vtwe7BINXRVy3PnmwvONoAkVCrv4CcSjXh8YJXUzidEh7SbWe34K/exec?type=scanner" target="_blank" style="color:#1d4ed8; font-weight:600;">여기를 클릭해서 핸드폰으로 공유하세요!</a>
     </div>
   </div>
 
@@ -214,7 +214,7 @@ const ALIGO_KEY  = "6t02gb2cqksv1tuvgw0yyd94d0e80y46";
 const ALIGO_ID   = "csbstech";
 const SENDER     = "01071543948";
 const ACCOUNT    = "국민은행 282437-04-005416 (창성비에스)";
-const APPS_URL   = "https://script.google.com/macros/s/AKfycbwQ7gEI1Ssz_2FNBwZ3_vpxP9bpph48anKxJHkRczbk34KtE51xu9ybfTk0CfdtrLlD/exec";
+const APPS_URL   = "https://script.google.com/macros/s/AKfycbyBlatSXyWdlBJ9vtwe7BINXRVy3PnmwvONoAkVCrv4CcSjXh8YJXUzidEh7SbWe34K/exec";
 
 // ── CSV 컬럼 위치 ──
 const COL_NAME=2, COL_MEMO=3, COL_TOTAL=14, COL_STATUS=15, COL_TRACKING=17;
@@ -466,17 +466,17 @@ document.getElementById("syncScanBtn").addEventListener("click", async () => {
     for (let i=1; i<data.length; i++) {
       const time     = String(data[i][0]||"").trim();
       const tracking = String(data[i][1]||"").trim();
-      const source   = String(data[i][4]||"").trim(); // main 또는 school
+      const source   = String(data[i][4]||"").trim();
+      const sentFlag = String(data[i][5]||"").trim(); // F열: 발송완료 여부
       if (!tracking) continue;
 
-      // 접수내역에서 매칭
       const rec = records.find((r) => {
         if (!r.tracking) return false;
         return r.tracking.split(/[\/,\s]+/).map((s)=>s.trim()).filter(Boolean).includes(tracking);
       });
-      // 레코드의 인센티브 열이 "school"이면 학교접수
       const isSchool = source === "school" || (rec && rec.source === "school");
-      scanList.push({ time, tracking, record: rec || null, source: isSchool ? "school" : "main" });
+      const isSent = sentFlag === "발송완료" || sentTrackings.includes(tracking);
+      scanList.push({ time, tracking, record: rec || null, source: isSchool ? "school" : "main", sent: isSent });
     }
     scanList.reverse(); // 최신순
 
@@ -509,6 +509,10 @@ function saveSentTrackings() {
 function markAsSent(trackings) {
   trackings.forEach(t => { if (!sentTrackings.includes(t)) sentTrackings.push(t); });
   saveSentTrackings();
+  // 구글 시트에도 발송완료 표시
+  try {
+    fetch(APPS_URL + "?type=markSent&trackings=" + encodeURIComponent(trackings.join(",")));
+  } catch(e) {}
 }
 
 function buildMergedGroups() {
