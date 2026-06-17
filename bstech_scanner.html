@@ -89,45 +89,68 @@ function showResult(msg, type) {
   }
 }
 
+// ── 송장번호 형식 변환 (698487556092 → 6984-8755-6092) ──
+function formatTracking(num) {
+  // 숫자만 추출
+  var digits = num.replace(/[^\d]/g, "");
+  // 12자리면 4-4-4 형식
+  if (digits.length === 12) {
+    return digits.substring(0,4) + "-" + digits.substring(4,8) + "-" + digits.substring(8,12);
+  }
+  // 13자리면 4-4-5 또는 5-4-4 형식
+  if (digits.length === 13) {
+    return digits.substring(0,4) + "-" + digits.substring(4,8) + "-" + digits.substring(8,13);
+  }
+  // 그 외는 4자리씩 하이픈
+  var parts = [];
+  for (var i = 0; i < digits.length; i += 4) {
+    parts.push(digits.substring(i, Math.min(i+4, digits.length)));
+  }
+  return parts.join("-");
+}
+
 // ── 구글 시트에 저장 ──
 function saveScan(tracking) {
   if (!tracking) return;
   tracking = tracking.trim();
 
+  // 숫자만 추출 후 하이픈 형식으로 변환
+  var formatted = formatTracking(tracking);
+
   // 중복 방지 (같은 번호 2초 이내 재스캔 방지)
   var now = Date.now();
-  if (tracking === lastScan && (now - lastScanTime) < 2000) return;
-  lastScan = tracking;
+  if (formatted === lastScan && (now - lastScanTime) < 2000) return;
+  lastScan = formatted;
   lastScanTime = now;
 
   // 이미 스캔한 번호인지 확인
   for (var i = 0; i < scanHistory.length; i++) {
-    if (scanHistory[i].tracking === tracking) {
-      showResult("이미 스캔한 번호예요: " + tracking, "error");
+    if (scanHistory[i].tracking === formatted) {
+      showResult("이미 스캔한 번호예요: " + formatted, "error");
       return;
     }
   }
 
-  showResult("저장 중... " + tracking, "saving");
+  showResult("저장 중... " + formatted, "saving");
 
   // 앱스 스크립트에 저장 요청
-  fetch(APPS_URL + "?type=addScan&tracking=" + encodeURIComponent(tracking))
+  fetch(APPS_URL + "?type=addScan&tracking=" + encodeURIComponent(formatted))
     .then(function(res) { return res.text(); })
     .then(function(result) {
       scanHistory.unshift({
-        tracking: tracking,
+        tracking: formatted,
         time: new Date().toLocaleTimeString("ko-KR"),
         status: "ok"
       });
       renderList();
-      showResult("✅ 저장 완료! " + tracking, "success");
+      showResult("✅ 저장 완료! " + formatted, "success");
       document.getElementById("manualInput").value = "";
       // 진동 피드백
       if (navigator.vibrate) navigator.vibrate(200);
     })
     .catch(function(err) {
       scanHistory.unshift({
-        tracking: tracking,
+        tracking: formatted,
         time: new Date().toLocaleTimeString("ko-KR"),
         status: "fail"
       });
@@ -186,7 +209,8 @@ document.getElementById("photoInput").addEventListener("change", function(e) {
       }
 
       // 확인 팝업
-      var confirmed = confirm("스캔된 송장번호:\n" + cleaned + "\n\n이 번호가 맞나요?");
+      var formatted = formatTracking(cleaned);
+      var confirmed = confirm("스캔된 송장번호:\n" + formatted + "\n\n이 번호가 맞나요?");
       if (confirmed) {
         saveScan(cleaned);
       } else {
