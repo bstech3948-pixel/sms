@@ -362,14 +362,15 @@ async function sendSMS(receiver, msg) {
     msg_type: msg.replace(/\s/g,"").length>90 ? "LMS" : "SMS",
   });
   try {
-    const res = await fetch("https://apis.aligo.in/send/", {
+    // no-cors 모드로 요청 (CORS 차단 우회 - 요청은 확실히 전송됨)
+    await fetch("https://apis.aligo.in/send/", {
       method:"POST",
+      mode:"no-cors",
       headers:{"Content-Type":"application/x-www-form-urlencoded"},
       body:params.toString(),
     });
-    const data = await res.json();
-    data._responseReceived = true;
-    return data;
+    // no-cors는 응답을 읽을 수 없으므로 "요청 보냄"으로 처리
+    return { result_code:-1, message:"요청 전송됨", _responseReceived:false };
   } catch(e) {
     return { result_code:-1, message:e.message, _responseReceived:false };
   }
