@@ -214,11 +214,18 @@ const ALIGO_KEY  = "6t02gb2cqksv1tuvgw0yyd94d0e80y46";
 const ALIGO_ID   = "csbstech";
 const SENDER     = "01071543948";
 const ACCOUNT    = "국민은행 282437-04-005416 (창성비에스)";
+const ACCOUNT_KAKAO = "카카오뱅크 3333 21 0047953 (한상은)";
 const APPS_URL   = "https://script.google.com/macros/s/AKfycbyBlatSXyWdlBJ9vtwe7BINXRVy3PnmwvONoAkVCrv4CcSjXh8YJXUzidEh7SbWe34K/exec";
 
 // ── CSV 컬럼 위치 ──
-const COL_NAME=2, COL_MEMO=3, COL_TOTAL=14, COL_STATUS=15, COL_TRACKING=17;
+const COL_NAME=2, COL_MEMO=3, COL_TOTAL=14, COL_STATUS=15, COL_TRACKING=17, COL_INVOICE=19;
 const ITEM_SLOTS = [{item:4,qty:6},{item:7,qty:9},{item:10,qty:12}];
+
+// 카카오뱅크 계좌 사용 여부 판별
+function isKakaoAccount(invoice) {
+  const v = String(invoice||"").trim().toLowerCase();
+  return v === "x" || v === "x카카오";
+}
 
 // ── 상태 ──
 const HISTORY_KEY = "bstech_sms_history";
@@ -305,10 +312,11 @@ function parseRecords(rows) {
     const total    = r[COL_TOTAL]   .trim();
     const status   = r[COL_STATUS]  .trim();
     const tracking = r[COL_TRACKING].trim();
+    const invoice  = (r[COL_INVOICE]||"").trim();
     const items    = buildItemSummary(r);
     const source   = r[1].trim() === "school" ? "school" : "main";
     if (!name && !tracking) continue;
-    parsed.push({name, memo, total, status, tracking, items, source});
+    parsed.push({name, memo, total, status, tracking, items, source, invoice});
   }
   return parsed;
 }
@@ -343,13 +351,14 @@ function formatMoney(val) {
   return Number(num).toLocaleString("ko-KR") + "원";
 }
 
-function buildMessage(name, total, tracking, items) {
+function buildMessage(name, total, tracking, items, invoice) {
   const itemLine = items ? "품목: "+items+"\n" : "";
+  const account = isKakaoAccount(invoice) ? ACCOUNT_KAKAO : ACCOUNT;
   return "[(주)창성비에스] "+name+" 고객님\n"+
     "재코팅 물품이 발송되었습니다\n"+
     itemLine+"송장번호: "+(tracking||"확인 요망")+"\n\n"+
     "입금 계좌 안내\n"+
-    ACCOUNT+"\n"+
+    account+"\n"+
     "입금금액: "+formatMoney(total)+"\n\n"+
     "감사합니다\n"+
     "문의: 010-7154-3948";
@@ -545,7 +554,8 @@ function buildMergedGroups() {
         record: s.record,
         indices: [],
         time: s.time,
-        source: s.source || s.record.source || "main"
+        source: s.source || s.record.source || "main",
+        invoice: s.record.invoice || ""
       };
     }
     groups[name].trackings.push(s.tracking);
@@ -560,6 +570,7 @@ function buildMergedGroups() {
 function buildMergedMessage(group) {
   const allItems = group.items.join(", ");
   const trackingList = group.trackings.join("\n");
+  const account = isKakaoAccount(group.invoice) ? ACCOUNT_KAKAO : ACCOUNT;
 
   if (group.source === "school") {
     // 학교접수: 입금계좌/금액 없이
@@ -576,7 +587,7 @@ function buildMergedMessage(group) {
       (allItems ? "품목: " + allItems + "\n" : "") +
       "송장번호: " + trackingList + "\n\n" +
       "입금 계좌 안내\n" +
-      ACCOUNT + "\n" +
+      account + "\n" +
       "입금금액: " + formatMoney(group.total) + "\n\n" +
       "감사합니다\n" +
       "문의: 010-7154-3948";
@@ -840,7 +851,7 @@ document.getElementById("phoneInput").addEventListener("input", updatePreview);
 function updatePreview() {
   if (!matched) return;
   const tracking = document.getElementById("trackingInput").value.trim();
-  const msg = buildMessage(matched.name, matched.total, tracking, matched.items);
+  const msg = buildMessage(matched.name, matched.total, tracking, matched.items, matched.invoice);
   document.getElementById("previewBubble").value = msg;
   updateCharCount();
 }
