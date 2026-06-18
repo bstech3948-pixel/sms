@@ -683,7 +683,6 @@ async function sendGroupDirect(gIdx) {
   btn.disabled = true;
   btn.textContent = "⏳ 발송 요청 중...";
 
-  const cleanPhone = phone.replace(/-/g,"");
   const result = await sendSMS(cleanPhone, msg);
 
   btn.disabled = false;
