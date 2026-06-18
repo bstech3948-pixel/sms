@@ -658,6 +658,12 @@ async function sendGroupDirect(gIdx) {
 
   const phone = (document.getElementById("scanPhoneg"+gIdx).value||"").trim();
   if (!phone) { showToast("연락처를 입력해주세요!", true); return; }
+  // 전화번호 유효성 검증
+  const cleanPhone = phone.replace(/[-\s]/g,"");
+  if (!/^01[0-9]\d{7,8}$/.test(cleanPhone)) {
+    showToast("올바른 전화번호가 아니에요! 예: 010-1234-5678", true);
+    return;
+  }
 
   const msg = document.getElementById("scanMsgg"+gIdx).value;
   if (!msg) { showToast("문자 내용이 비어있어요!", true); return; }
@@ -852,6 +858,11 @@ document.getElementById("sendBtn").addEventListener("click", async () => {
   if (!matched) { showToast("먼저 송장번호를 검색해주세요!", true); return; }
   const phone = document.getElementById("phoneInput").value.trim();
   if (!phone) { showToast("연락처를 입력해주세요!", true); return; }
+  const cleanPhoneVal = phone.replace(/[-\s]/g,"");
+  if (!/^01[0-9]\d{7,8}$/.test(cleanPhoneVal)) {
+    showToast("올바른 전화번호가 아니에요! 예: 010-1234-5678", true);
+    return;
+  }
 
   const btn = document.getElementById("sendBtn");
   btn.disabled = true;
