@@ -142,6 +142,10 @@ input { width:100%; padding:9px 10px; border:1px solid #e5e7eb; border-radius:8p
         <button class="btn btn-blue" id="syncScanBtn">🔄 스캔 목록 불러오기</button>
         <span class="sync-status" id="scanSyncStatus">아직 불러오지 않았어요</span>
       </div>
+      <div class="sync-row">
+        <button class="btn btn-sm" id="refreshScanBtn" style="background:#7c3aed;">🔁 시트 재매칭 (상호/품목 다시 찾기)</button>
+      </div>
+      <p class="help-text" style="margin-top:6px;margin-bottom:0;">송장이 안 잡혀서 상호가 비거나 잘못됐을 때, 최신접수내역에 송장을 제대로 넣은 뒤 이 버튼을 누르면 스캔 시트의 상호·품목을 다시 찾아 고쳐요.</p>
       <div id="scanSyncTag"></div>
     </div>
 
@@ -525,7 +529,8 @@ async function loadScanList(silent) {
         if (!r.tracking) return false;
         return expandTrackings(r.tracking).includes(tracking);
       });
-      const isSchool = source === "school" || (rec && rec.source === "school");
+      // source 판정: 접수내역에서 찾았으면 그 source 우선 (시트 E열이 틀려도 접수내역 기준)
+      const isSchool = rec ? (rec.source === "school") : (source === "school");
       const isSent = sentFlag === "발송완료" || sentTrackings.includes(tracking);
       scanList.push({ time, tracking, record: rec || null, source: isSchool ? "school" : "main", sent: isSent });
     }
@@ -548,6 +553,28 @@ async function loadScanList(silent) {
   }
 }
 document.getElementById("syncScanBtn").addEventListener("click", () => loadScanList(false));
+
+// 시트 재매칭: 당일발송 스캔 시트의 상호/품목/source를 최신접수내역 기준으로 다시 채움
+document.getElementById("refreshScanBtn").addEventListener("click", async () => {
+  const btn = document.getElementById("refreshScanBtn");
+  btn.disabled = true;
+  const orig = btn.textContent;
+  btn.textContent = "⏳ 재매칭 중...";
+  try {
+    const res = await fetch(APPS_URL + "?type=refreshScans");
+    const txt = await res.text();
+    showToast("✅ " + txt);
+    // 접수내역을 최신으로 다시 불러온 뒤 스캔 목록 갱신
+    records = [];
+    contacts = [];
+    await loadScanList(true);
+  } catch(e) {
+    showToast("❌ 재매칭 실패: " + e.message, true);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = orig;
+  }
+});
 
 function markAsSent(trackings) {
   trackings.forEach(t => { if (!sentTrackings.includes(t)) sentTrackings.push(t); });
