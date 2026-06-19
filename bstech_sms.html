@@ -227,6 +227,43 @@ function isKakaoAccount(invoice) {
   return v === "x" || v === "x카카오";
 }
 
+// ── 발송 완료 송장번호 영구 저장 (※ 사용처보다 먼저 선언해야 함) ──
+const SENT_KEY = "bstech_sent_trackings";
+let sentTrackings = [];
+try { sentTrackings = JSON.parse(localStorage.getItem(SENT_KEY)||"[]"); } catch(e) { sentTrackings=[]; }
+
+function saveSentTrackings() {
+  try { localStorage.setItem(SENT_KEY, JSON.stringify(sentTrackings)); } catch(e) {}
+}
+
+// ── 송장번호 분리 + 축약 표기 복원 ──
+// 예: "6986-3998-0930/0941" → ["6986-3998-0930","6986-3998-0941"]
+function expandTrackings(raw) {
+  const rawList = String(raw||"").split(/[\/,\s]+/);
+  const out = [];
+  let lastFull = "";
+  for (let k=0; k<rawList.length; k++) {
+    const piece = rawList[k].trim();
+    if (!piece) continue;
+    const digits = piece.replace(/-/g,"");
+    if (digits.length >= 10) {
+      out.push(piece);
+      lastFull = piece;
+    } else if (lastFull) {
+      const lastDigits = lastFull.replace(/-/g,"");
+      const prefix = lastDigits.substring(0, lastDigits.length - digits.length);
+      let restored = prefix + digits;
+      if (restored.length === 12) {
+        restored = restored.substring(0,4)+"-"+restored.substring(4,8)+"-"+restored.substring(8,12);
+      }
+      out.push(restored);
+    } else {
+      out.push(piece);
+    }
+  }
+  return out;
+}
+
 // ── 상태 ──
 const HISTORY_KEY = "bstech_sms_history";
 let records  = [];
@@ -431,7 +468,7 @@ document.getElementById("syncBtn").addEventListener("click", async () => {
 });
 
 // ── 스캔 목록 불러오기 ──
-document.getElementById("syncScanBtn").addEventListener("click", async () => {
+async function loadScanList(silent) {
   const btn    = document.getElementById("syncScanBtn");
   const status = document.getElementById("scanSyncStatus");
   btn.disabled = true;
@@ -482,7 +519,7 @@ document.getElementById("syncScanBtn").addEventListener("click", async () => {
 
       const rec = records.find((r) => {
         if (!r.tracking) return false;
-        return r.tracking.split(/[\/,\s]+/).map((s)=>s.trim()).filter(Boolean).includes(tracking);
+        return expandTrackings(r.tracking).includes(tracking);
       });
       const isSchool = source === "school" || (rec && rec.source === "school");
       const isSent = sentFlag === "발송완료" || sentTrackings.includes(tracking);
@@ -496,25 +533,17 @@ document.getElementById("syncScanBtn").addEventListener("click", async () => {
       '<div class="file-tag">✅ 접수내역 '+records.length+'건 · 연락처 '+contacts.length+'개 · 스캔 '+scanList.length+'건 불러옴<br>접수내역 매칭: '+scanList.filter(s=>s.record).length+'건</div>';
     renderScanList();
     document.getElementById("scanListCard").style.display = "block";
-    showToast("✅ 전체 데이터 불러오기 완료!");
+    if (!silent) showToast("✅ 전체 데이터 불러오기 완료!");
   } catch(e) {
     status.textContent = "불러오기 실패";
     document.getElementById("scanSyncTag").innerHTML = '<div style="color:#b91c1c;font-size:12px;margin-top:8px;">❌ '+esc(e.message)+'</div>';
-    showToast("❌ 불러오기 실패: "+e.message, true);
+    if (!silent) showToast("❌ 불러오기 실패: "+e.message, true);
   } finally {
     btn.disabled = false;
     btn.textContent = "🔄 스캔 목록 불러오기";
   }
-});
-
-// 발송 완료 송장번호 영구 저장
-const SENT_KEY = "bstech_sent_trackings";
-let sentTrackings = [];
-try { sentTrackings = JSON.parse(localStorage.getItem(SENT_KEY)||"[]"); } catch(e) { sentTrackings=[]; }
-
-function saveSentTrackings() {
-  try { localStorage.setItem(SENT_KEY, JSON.stringify(sentTrackings)); } catch(e) {}
 }
+document.getElementById("syncScanBtn").addEventListener("click", () => loadScanList(false));
 
 function markAsSent(trackings) {
   trackings.forEach(t => { if (!sentTrackings.includes(t)) sentTrackings.push(t); });
@@ -818,7 +847,7 @@ function handleSearch() {
 
   const found = records.find((r) => {
     if (!r.tracking) return false;
-    return r.tracking.split(/[\/,\s]+/).map((s)=>s.trim()).filter(Boolean).includes(query);
+    return expandTrackings(r.tracking).includes(query);
   });
 
   if (found) {
@@ -941,6 +970,9 @@ function renderHistory() {
 }
 
 renderHistory();
+
+// ── 페이지 열릴 때 스캔 탭 자동 불러오기 (새로고침해도 오늘 미발송 건 복원) ──
+window.addEventListener("load", () => { loadScanList(true); });
 </script>
 </body>
 </html>
