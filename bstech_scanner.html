@@ -154,6 +154,8 @@ function saveScan(tracking) {
       showResult("✅ 저장 완료! " + formatted + (displayInfo ? "\n" + displayInfo : ""), "success");
       document.getElementById("manualInput").value = "";
       if (navigator.vibrate) navigator.vibrate(200);
+      // 시트에 반영된 뒤 다시 불러와 동기화 (잠시 대기 후)
+      setTimeout(loadTodayScans, 1500);
     })
     .catch(function(err) {
       scanHistory.unshift({
@@ -163,6 +165,50 @@ function saveScan(tracking) {
       });
       renderList();
       showResult("⚠️ 저장 요청은 보냈어요 (확인 필요)", "error");
+    });
+}
+
+// ── 오늘 날짜인지 확인 ──
+function isToday(timeStr) {
+  if (!timeStr) return false;
+  var d = new Date(timeStr);
+  if (isNaN(d.getTime())) return false;
+  var now = new Date();
+  return d.getFullYear() === now.getFullYear() &&
+         d.getMonth() === now.getMonth() &&
+         d.getDate() === now.getDate();
+}
+
+// ── 시트에서 오늘 스캔 목록 불러오기 (새로고침해도 복원) ──
+function loadTodayScans() {
+  fetch(APPS_URL + "?type=scans")
+    .then(function(res) { return res.json(); })
+    .then(function(data) {
+      var loaded = [];
+      // data[0]은 헤더, 1행부터 데이터
+      for (var i = 1; i < data.length; i++) {
+        var time     = String(data[i][0] || "").trim();
+        var tracking = String(data[i][1] || "").trim();
+        var name     = String(data[i][2] || "").trim();
+        var items    = String(data[i][3] || "").trim();
+        var sentFlag = String(data[i][5] || "").trim();
+        if (!tracking) continue;
+        if (!isToday(time)) continue; // 오늘 것만
+        loaded.push({
+          tracking: tracking,
+          time: new Date(time).toLocaleTimeString("ko-KR"),
+          status: "ok",
+          name: name,
+          items: items,
+          sent: sentFlag === "발송완료"
+        });
+      }
+      loaded.reverse(); // 최신순 (시트는 오래된 순으로 쌓임)
+      scanHistory = loaded;
+      renderList();
+    })
+    .catch(function(err) {
+      // 불러오기 실패 시 기존 메모리 목록 유지
     });
 }
 
@@ -251,6 +297,9 @@ document.getElementById("manualInput").addEventListener("keydown", function(e) {
     if (val) saveScan(val);
   }
 });
+
+// ── 페이지 열릴 때 오늘 스캔 목록 불러오기 (새로고침해도 복원) ──
+loadTodayScans();
 </script>
 </body>
 </html>
