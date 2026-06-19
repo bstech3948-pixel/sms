@@ -436,6 +436,10 @@ document.querySelectorAll(".tab").forEach((btn) => {
     document.querySelectorAll(".body").forEach((b)=>b.classList.remove("active"));
     btn.classList.add("active");
     document.getElementById("tab-"+btn.dataset.tab).classList.add("active");
+    // 스캔 발송 탭을 누르면 자동으로 최신 스캔 목록 불러오기
+    if (btn.dataset.tab === "scan") {
+      loadScanList(true);
+    }
   });
 });
 
@@ -554,6 +558,40 @@ function markAsSent(trackings) {
   } catch(e) {}
 }
 
+// 발송완료 해제(미발송으로 되돌리기) - 브라우저 기록 + 발송내역 + 시트 F열 모두 비움
+function unmarkAsSent(trackings) {
+  // 1) 브라우저 발송완료 기록에서 제거
+  sentTrackings = sentTrackings.filter(t => !trackings.includes(t));
+  saveSentTrackings();
+  // 2) 발송내역(history)에서도 해당 송장이 포함된 항목 제거
+  history = history.filter(h => {
+    if (!h.tracking) return true;
+    const hts = h.tracking.split(/[,\s]+/).map(x=>x.trim()).filter(Boolean);
+    // 이 내역의 송장이 되돌릴 목록과 겹치면 제거
+    return !hts.some(t => trackings.includes(t));
+  });
+  saveHistory();
+  renderHistory();
+  // 3) 구글 시트 F열도 비우기
+  try {
+    fetch(APPS_URL + "?type=unmarkSent&trackings=" + encodeURIComponent(trackings.join(",")));
+  } catch(e) {}
+  // 4) 메모리상의 scanList에서도 sent 해제
+  scanList.forEach(s => { if (trackings.includes(s.tracking)) s.sent = false; });
+}
+
+// 되돌리기 버튼 클릭 핸들러 (상호별 묶음 단위로 되돌림)
+function undoSentGroup(encodedName) {
+  const name = decodeURIComponent(encodedName);
+  // 해당 상호의 발송완료된 송장 모으기
+  const targets = scanList.filter(s => s.record && s.record.name === name && s.sent).map(s => s.tracking);
+  if (targets.length === 0) return;
+  if (!confirm("'"+name+"' "+targets.length+"건을 미발송으로 되돌릴까요?")) return;
+  unmarkAsSent(targets);
+  renderScanList();
+  showToast("↩️ '"+name+"' "+targets.length+"건을 미발송으로 되돌렸어요.");
+}
+
 function buildMergedGroups() {
   // 발송 내역에서 이미 보낸 송장번호 추출
   const historyTrackings = [];
@@ -633,12 +671,18 @@ function renderScanList() {
   document.getElementById("scanListCard").querySelector(".card-title").innerHTML =
     '스캔된 송장 목록 <span style="font-size:12px;color:#9ca3af;font-weight:400;">(미발송 '+unsent+'건'+(sent>0?' · 발송완료 '+sent+'건':'')+' · 총 '+scanList.length+'건)</span>';
 
-  if (mergedGroups.length===0) {
+  const unmatchedCount = scanList.filter(s => !s.record && !s.sent).length;
+  const sentCount = scanList.filter(s => s.record && s.sent).length;
+  if (mergedGroups.length===0 && unmatchedCount===0 && sentCount===0) {
     list.innerHTML = '<div class="empty">'+(scanList.length>0?'모든 건이 발송 완료되었어요!':'스캔된 송장이 없어요')+'</div>';
     return;
   }
 
-  list.innerHTML = mergedGroups.map((g, gIdx) => {
+  let html = "";
+  if (mergedGroups.length===0 && unmatchedCount===0 && sentCount>0) {
+    html += '<div class="empty" style="padding-top:10px;">미발송 건이 없어요. 아래는 발송완료된 건이에요.</div>';
+  }
+  html += mergedGroups.map((g, gIdx) => {
     const autoPhone = formatPhone(extractPhone(g.record.memo) || findPhoneByName(g.name) || "");
     const previewMsg = buildMergedMessage(g);
     const trackingDisplay = g.trackings.join(", ");
@@ -669,6 +713,48 @@ function renderScanList() {
       '</div>'
     );
   }).join("");
+
+  // 상호명 미매칭 + 미발송 건 (접수내역에서 못 찾은 스캔) 별도 표시
+  const unmatched = scanList.filter(s => !s.record && !s.sent);
+  if (unmatched.length > 0) {
+    html += '<div style="margin-top:14px;padding-top:10px;border-top:1px dashed #e5e7eb;">'+
+      '<div style="font-size:12px;color:#b45309;font-weight:600;margin-bottom:8px;">⚠️ 상호 미매칭 '+unmatched.length+'건 (접수내역에서 송장을 못 찾음 · 문자 발송 불가)</div>'+
+      unmatched.map(s => (
+        '<div class="scan-row" style="display:block;background:#fffbeb;border-color:#fde68a;">'+
+          '<div class="scan-no">'+esc(s.tracking)+'</div>'+
+          '<div class="scan-nomatch">접수내역에 없는 송장이에요. 구글시트 송장번호를 확인해주세요.</div>'+
+        '</div>'
+      )).join("")+
+    '</div>';
+  }
+
+  // 발송완료된 건 (상호별로 묶어서) - 되돌리기 버튼 포함
+  const sentGroupMap = {};
+  scanList.forEach(s => {
+    if (s.record && s.sent) {
+      const nm = s.record.name;
+      if (!sentGroupMap[nm]) sentGroupMap[nm] = [];
+      sentGroupMap[nm].push(s.tracking);
+    }
+  });
+  const sentNames = Object.keys(sentGroupMap);
+  if (sentNames.length > 0) {
+    html += '<div style="margin-top:14px;padding-top:10px;border-top:1px dashed #e5e7eb;">'+
+      '<div style="font-size:12px;color:#9ca3af;font-weight:600;margin-bottom:8px;">✅ 발송완료 '+sentNames.length+'개 거래처 (잘못 처리됐으면 되돌리기)</div>'+
+      sentNames.map(nm => {
+        const tks = sentGroupMap[nm];
+        return '<div class="scan-row" style="display:flex;justify-content:space-between;align-items:center;background:#f3f4f6;">'+
+          '<div class="scan-info">'+
+            '<div class="scan-no" style="color:#6b7280;">'+esc(nm)+(tks.length>1?' <span style="background:#e5e7eb;color:#6b7280;font-size:11px;padding:2px 6px;border-radius:10px;">'+tks.length+'건</span>':'')+'</div>'+
+            '<div class="scan-time">송장: '+esc(tks.join(", "))+'</div>'+
+          '</div>'+
+          '<button class="btn btn-sm" style="background:#b45309;flex-shrink:0;" onclick="undoSentGroup(\''+encodeURIComponent(nm)+'\')">↩️ 되돌리기</button>'+
+        '</div>';
+      }).join("")+
+    '</div>';
+  }
+
+  list.innerHTML = html;
 }
 
 // 미리보기 펼치기/접기
