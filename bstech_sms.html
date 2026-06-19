@@ -585,6 +585,14 @@ function markAsSent(trackings) {
   } catch(e) {}
 }
 
+// 문자 발송 시 최신접수내역 계산서 열(T)에 발송 날짜 기입 (비어있을 때만)
+function markInvoiceSent(trackings) {
+  if (!trackings || !trackings.length) return;
+  try {
+    fetch(APPS_URL + "?type=markInvoice&trackings=" + encodeURIComponent(trackings.join(",")));
+  } catch(e) {}
+}
+
 // 발송완료 해제(미발송으로 되돌리기) - 브라우저 기록 + 발송내역 + 시트 F열 모두 비움
 function unmarkAsSent(trackings) {
   // 1) 브라우저 발송완료 기록에서 제거
@@ -832,6 +840,7 @@ async function sendGroupDirect(gIdx) {
   if (result._responseReceived && result.result_code===1) {
     group.indices.forEach(i => { scanList[i].sent = true; });
     markAsSent(group.trackings);
+    markInvoiceSent(group.trackings);
     addHistory(group.name, phone, group.trackings.join(", "), msg, "발송 성공");
     renderScanList();
     showToast("✅ "+group.name+"님께 문자 발송 완료!");
@@ -841,6 +850,7 @@ async function sendGroupDirect(gIdx) {
   } else {
     group.indices.forEach(i => { scanList[i].sent = true; });
     markAsSent(group.trackings);
+    markInvoiceSent(group.trackings);
     addHistory(group.name, phone, group.trackings.join(", "), msg, "응답확인불가");
     renderScanList();
     showToast("⚠️ 요청은 보냈어요. 알리고 전송내역에서 확인해주세요.", true);
@@ -866,11 +876,13 @@ document.getElementById("sendAllScansBtn").addEventListener("click", async () =>
     if (result._responseReceived && result.result_code===1) {
       group.indices.forEach(i => { scanList[i].sent = true; });
       markAsSent(group.trackings);
+      markInvoiceSent(group.trackings);
       addHistory(group.name, phone, group.trackings.join(", "), msg, "발송 성공");
       success++;
     } else if (!result._responseReceived) {
       group.indices.forEach(i => { scanList[i].sent = true; });
       markAsSent(group.trackings);
+      markInvoiceSent(group.trackings);
       addHistory(group.name, phone, group.trackings.join(", "), msg, "응답확인불가");
       success++;
     } else {
@@ -1027,6 +1039,7 @@ document.getElementById("sendBtn").addEventListener("click", async () => {
 
   if (result._responseReceived && result.result_code===1) {
     addHistory(matched.name, phone, tracking, msg, "발송 성공");
+    markInvoiceSent([tracking]);
     showToast("✅ "+matched.name+"님께 문자 발송 완료!");
     resetAfterSend();
   } else if (result._responseReceived && result.result_code!==1) {
@@ -1034,6 +1047,7 @@ document.getElementById("sendBtn").addEventListener("click", async () => {
     btn.textContent = "📨 "+matched.name+"님께 문자 발송";
   } else {
     addHistory(matched.name, phone, tracking, msg, "응답확인불가");
+    markInvoiceSent([tracking]);
     showToast("⚠️ 요청은 보냈어요. 알리고 전송내역에서 확인해주세요.", true);
     resetAfterSend();
   }
