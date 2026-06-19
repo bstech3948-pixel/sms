@@ -220,15 +220,62 @@ function renderList() {
     list.innerHTML = '<div class="empty-msg">아직 스캔한 송장이 없어요</div>';
     return;
   }
-  list.innerHTML = scanHistory.map(function(s) {
-    var statusClass = s.status === "ok" ? "status-ok" : "status-fail";
-    var statusText = s.status === "ok" ? "저장완료" : "확인필요";
+
+  // 같은 상호끼리 묶기 (상호명 없는 건은 송장별로 따로)
+  var groups = [];       // 순서 유지용 배열
+  var groupMap = {};     // 상호명 → groups 인덱스
+  scanHistory.forEach(function(s) {
+    if (s.name) {
+      // 상호명 있음 → 같은 상호로 묶기
+      if (groupMap.hasOwnProperty(s.name)) {
+        var g = groups[groupMap[s.name]];
+        g.trackings.push(s.tracking);
+        if (s.items && g.items.indexOf(s.items) < 0) g.items.push(s.items);
+        if (s.status !== "ok") g.allOk = false;
+      } else {
+        groupMap[s.name] = groups.length;
+        groups.push({
+          name: s.name,
+          trackings: [s.tracking],
+          items: s.items ? [s.items] : [],
+          time: s.time,
+          allOk: s.status === "ok"
+        });
+      }
+    } else {
+      // 상호명 없음(미매칭) → 묶지 않고 단독 표시
+      groups.push({
+        name: "",
+        trackings: [s.tracking],
+        items: [],
+        time: s.time,
+        allOk: s.status === "ok"
+      });
+    }
+  });
+
+  list.innerHTML = groups.map(function(g) {
+    var statusClass = g.allOk ? "status-ok" : "status-fail";
+    var statusText = g.allOk ? "저장완료" : "확인필요";
+    var countBadge = g.trackings.length > 1
+      ? ' <span style="background:#dbeafe;color:#1d4ed8;font-size:11px;padding:2px 8px;border-radius:10px;font-weight:600;">송장 '+g.trackings.length+'건</span>'
+      : '';
+    // 제목: 상호명 있으면 상호명, 없으면 송장번호
+    var titleHtml = g.name
+      ? '<span class="scan-no">' + g.name + '</span>' + countBadge
+      : '<span class="scan-no">' + g.trackings[0] + '</span>';
+    // 송장 목록 (여러 개면 줄바꿈)
+    var trackingHtml = g.name
+      ? '<div class="scan-time">송장: ' + g.trackings.join(", ") + '</div>'
+      : '<div class="scan-nomatch" style="font-size:12px;color:#b91c1c;margin-top:2px;">⚠️ 상호 미매칭 (시트 확인 필요)</div>';
+
     return '<div class="scan-item" style="display:block;">' +
       '<div style="display:flex;justify-content:space-between;align-items:center;">' +
-      '<span class="scan-no">' + s.tracking + '</span>' +
+      titleHtml +
       '<span class="scan-status ' + statusClass + '">' + statusText + '</span></div>' +
-      '<div class="scan-time">' + s.time + '</div>' +
-      (s.name ? '<div style="font-size:12px;color:#15803d;margin-top:2px;">✅ '+s.name+(s.items?' · '+s.items:'')+'</div>' : '') +
+      '<div class="scan-time">' + g.time + '</div>' +
+      trackingHtml +
+      (g.items.length ? '<div style="font-size:12px;color:#15803d;margin-top:2px;">✅ '+g.items.join(", ")+'</div>' : '') +
       '</div>';
   }).join("");
 }
