@@ -75,6 +75,20 @@ input { width:100%; padding:9px 10px; border:1px solid #e5e7eb; border-radius:8p
 .scan-send-btn { width:100%; padding:10px; background:#1f2937; color:#fff; border:none; border-radius:8px; font-size:14px; font-weight:600; cursor:pointer; font-family:inherit; }
 .scan-send-btn:disabled { opacity:0.6; cursor:not-allowed; }
 .scan-toggle { background:none; border:1px solid #e5e7eb; border-radius:6px; padding:4px 10px; font-size:11px; color:#6b7280; cursor:pointer; font-family:inherit; }
+.modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1000; align-items:flex-start; justify-content:center; padding:20px 12px; overflow-y:auto; }
+.modal-overlay.open { display:flex; }
+.modal-box { background:#fff; border-radius:14px; width:100%; max-width:460px; padding:18px; box-shadow:0 8px 30px rgba(0,0,0,0.2); margin-top:20px; }
+.modal-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; }
+.modal-title { font-size:16px; font-weight:800; color:#111827; }
+.modal-close { background:none; border:none; font-size:22px; color:#9ca3af; cursor:pointer; line-height:1; padding:0 4px; }
+.modal-sub { font-size:12px; color:#6b7280; margin-bottom:12px; }
+.sent-item { display:flex; justify-content:space-between; align-items:center; padding:10px 12px; background:#f3f4f6; border-radius:8px; margin-bottom:6px; }
+.sent-name { font-size:13px; font-weight:600; color:#374151; }
+.sent-trk { font-size:11px; color:#9ca3af; margin-top:2px; word-break:break-all; }
+.pager { display:flex; justify-content:center; align-items:center; gap:12px; margin-top:14px; }
+.pager button { background:#1f2937; color:#fff; border:none; border-radius:8px; padding:8px 14px; font-size:13px; font-weight:600; cursor:pointer; font-family:inherit; }
+.pager button:disabled { opacity:0.4; cursor:not-allowed; }
+.pager-info { font-size:13px; color:#374151; font-weight:600; }
 </style>
 </head>
 <body>
@@ -211,6 +225,19 @@ input { width:100%; padding:9px 10px; border:1px solid #e5e7eb; border-radius:8p
 </div>
 
 <div class="toast" id="toast"></div>
+
+<!-- 발송완료 관리 팝업 -->
+<div class="modal-overlay" id="sentModal">
+  <div class="modal-box">
+    <div class="modal-head">
+      <div class="modal-title">✅ 발송완료 관리</div>
+      <button class="modal-close" onclick="closeSentModal()">&times;</button>
+    </div>
+    <div class="modal-sub" id="sentModalSub">잘못 발송완료된 건을 미발송으로 되돌릴 수 있어요.</div>
+    <div id="sentModalList"></div>
+    <div class="pager" id="sentModalPager"></div>
+  </div>
+</div>
 
 <script>
 // ── 설정 ──
@@ -625,7 +652,87 @@ function undoSentGroup(encodedName) {
   unmarkAsSent(targets);
   renderScanList();
   showToast("↩️ '"+name+"' "+targets.length+"건을 미발송으로 되돌렸어요.");
+  // 모달이 열려 있으면 모달도 다시 그림
+  if (document.getElementById("sentModal").classList.contains("open")) {
+    renderSentModal();
+  }
 }
+
+// ── 발송완료 관리 팝업 (한 페이지 10개씩) ──
+const SENT_PAGE_SIZE = 10;
+let sentModalPage = 0;
+
+function getSentGroups() {
+  const map = {};
+  const order = [];
+  scanList.forEach(s => {
+    if (s.record && s.sent) {
+      const nm = s.record.name;
+      if (!map[nm]) { map[nm] = []; order.push(nm); }
+      map[nm].push(s.tracking);
+    }
+  });
+  return order.map(nm => ({ name: nm, trackings: map[nm] }));
+}
+
+function openSentModal() {
+  sentModalPage = 0;
+  document.getElementById("sentModal").classList.add("open");
+  renderSentModal();
+}
+
+function closeSentModal() {
+  document.getElementById("sentModal").classList.remove("open");
+}
+
+function renderSentModal() {
+  const groups = getSentGroups();
+  const listEl = document.getElementById("sentModalList");
+  const subEl = document.getElementById("sentModalSub");
+  const pagerEl = document.getElementById("sentModalPager");
+
+  const total = groups.length;
+  const totalPages = Math.max(1, Math.ceil(total / SENT_PAGE_SIZE));
+  if (sentModalPage >= totalPages) sentModalPage = totalPages - 1;
+  if (sentModalPage < 0) sentModalPage = 0;
+
+  subEl.textContent = "발송완료 "+total+"개 거래처 · 잘못된 건은 되돌리기를 누르세요.";
+
+  if (total === 0) {
+    listEl.innerHTML = '<div class="empty" style="padding:20px 0;">발송완료된 건이 없어요.</div>';
+    pagerEl.innerHTML = "";
+    return;
+  }
+
+  const start = sentModalPage * SENT_PAGE_SIZE;
+  const pageItems = groups.slice(start, start + SENT_PAGE_SIZE);
+
+  listEl.innerHTML = pageItems.map(g => {
+    const cnt = g.trackings.length;
+    return '<div class="sent-item">'+
+      '<div style="flex:1;min-width:0;">'+
+        '<div class="sent-name">'+esc(g.name)+(cnt>1?' <span style="background:#e5e7eb;color:#6b7280;font-size:11px;padding:2px 6px;border-radius:10px;">'+cnt+'건</span>':'')+'</div>'+
+        '<div class="sent-trk">송장: '+esc(g.trackings.join(", "))+'</div>'+
+      '</div>'+
+      '<button class="btn btn-sm" style="background:#b45309;flex-shrink:0;margin-left:8px;" onclick="undoSentGroup(\''+encodeURIComponent(g.name)+'\')">↩️ 되돌리기</button>'+
+    '</div>';
+  }).join("");
+
+  pagerEl.innerHTML =
+    '<button onclick="changeSentPage(-1)" '+(sentModalPage===0?'disabled':'')+'>← 이전</button>'+
+    '<span class="pager-info">'+(sentModalPage+1)+' / '+totalPages+' 페이지</span>'+
+    '<button onclick="changeSentPage(1)" '+(sentModalPage>=totalPages-1?'disabled':'')+'>다음 →</button>';
+}
+
+function changeSentPage(delta) {
+  sentModalPage += delta;
+  renderSentModal();
+}
+
+// 모달 바깥(어두운 부분) 클릭 시 닫기
+document.getElementById("sentModal").addEventListener("click", (e) => {
+  if (e.target.id === "sentModal") closeSentModal();
+});
 
 function buildMergedGroups() {
   // 발송 내역에서 이미 보낸 송장번호 추출
@@ -763,7 +870,7 @@ function renderScanList() {
     '</div>';
   }
 
-  // 발송완료된 건 (상호별로 묶어서) - 되돌리기 버튼 포함
+  // 발송완료된 건 → 별도 팝업으로 관리 (버튼만 표시)
   const sentGroupMap = {};
   scanList.forEach(s => {
     if (s.record && s.sent) {
@@ -774,18 +881,8 @@ function renderScanList() {
   });
   const sentNames = Object.keys(sentGroupMap);
   if (sentNames.length > 0) {
-    html += '<div style="margin-top:14px;padding-top:10px;border-top:1px dashed #e5e7eb;">'+
-      '<div style="font-size:12px;color:#9ca3af;font-weight:600;margin-bottom:8px;">✅ 발송완료 '+sentNames.length+'개 거래처 (잘못 처리됐으면 되돌리기)</div>'+
-      sentNames.map(nm => {
-        const tks = sentGroupMap[nm];
-        return '<div class="scan-row" style="display:flex;justify-content:space-between;align-items:center;background:#f3f4f6;">'+
-          '<div class="scan-info">'+
-            '<div class="scan-no" style="color:#6b7280;">'+esc(nm)+(tks.length>1?' <span style="background:#e5e7eb;color:#6b7280;font-size:11px;padding:2px 6px;border-radius:10px;">'+tks.length+'건</span>':'')+'</div>'+
-            '<div class="scan-time">송장: '+esc(tks.join(", "))+'</div>'+
-          '</div>'+
-          '<button class="btn btn-sm" style="background:#b45309;flex-shrink:0;" onclick="undoSentGroup(\''+encodeURIComponent(nm)+'\')">↩️ 되돌리기</button>'+
-        '</div>';
-      }).join("")+
+    html += '<div style="margin-top:14px;padding-top:10px;border-top:1px dashed #e5e7eb;text-align:center;">'+
+      '<button class="btn btn-sm" style="background:#6b7280;" onclick="openSentModal()">✅ 발송완료 '+sentNames.length+'개 거래처 보기 / 되돌리기</button>'+
     '</div>';
   }
 
@@ -1098,8 +1195,15 @@ function renderHistory() {
 
 renderHistory();
 
-// ── 페이지 열릴 때 스캔 탭 자동 불러오기 (새로고침해도 오늘 미발송 건 복원) ──
-window.addEventListener("load", () => { loadScanList(true); });
+// ── 페이지 열릴 때 데이터 + 스캔 목록 자동 불러오기 (새로고침해도 복원) ──
+window.addEventListener("load", async () => {
+  // 1) 데이터 탭: 구글 시트 불러오기 버튼과 동일하게 실행
+  try { document.getElementById("syncBtn").click(); } catch(e) {}
+  // 2) 거래처연락처도 자동 불러오기
+  try { document.getElementById("syncContactBtn").click(); } catch(e) {}
+  // 3) 스캔 목록 불러오기 (위 데이터가 로드된 뒤 매칭되도록 약간 대기)
+  setTimeout(() => { loadScanList(true); }, 800);
+});
 </script>
 </body>
 </html>
