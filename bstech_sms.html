@@ -206,6 +206,10 @@ input { width:100%; padding:9px 10px; border:1px solid #e5e7eb; border-radius:8p
         <button class="btn btn-green" id="syncContactBtn">🔄 거래처연락처 불러오기</button>
         <span class="sync-status" id="contactSyncStatus">아직 불러오지 않았어요</span>
       </div>
+      <div class="sync-row" style="margin-top:6px;">
+        <button class="btn btn-sm" id="importContactBtn" style="background:#0891b2;">📱 구글 연락처 가져오기 (시트에 추가)</button>
+      </div>
+      <p class="help-text" style="margin-top:6px;margin-bottom:0;">핸드폰에서 이 구글 계정에 저장한 연락처를 거래처연락처 탭에 추가해요. (이름에 2606이 있거나, 탭에 없는 새 번호 / 중복은 자동 제외)</p>
       <div id="contactSyncTag"></div>
     </div>
 
@@ -269,6 +273,11 @@ function saveSentTrackings() {
 
 // ── 송장번호 분리 + 축약 표기 복원 ──
 // 예: "6986-3998-0930/0941" → ["6986-3998-0930","6986-3998-0941"]
+// 문자열에서 숫자만 추출 (하이픈·공백·전각문자·기타 기호 모두 제거)
+function onlyDigits(s) {
+  return String(s||"").replace(/[^0-9]/g,"");
+}
+
 function expandTrackings(raw) {
   const rawList = String(raw||"").split(/[\/,\s]+/);
   const out = [];
@@ -276,12 +285,13 @@ function expandTrackings(raw) {
   for (let k=0; k<rawList.length; k++) {
     const piece = rawList[k].trim();
     if (!piece) continue;
-    const digits = piece.replace(/-/g,"");
+    const digits = onlyDigits(piece);
+    if (!digits) continue;
     if (digits.length >= 10) {
       out.push(piece);
       lastFull = piece;
     } else if (lastFull) {
-      const lastDigits = lastFull.replace(/-/g,"");
+      const lastDigits = onlyDigits(lastFull);
       const prefix = lastDigits.substring(0, lastDigits.length - digits.length);
       let restored = prefix + digits;
       if (restored.length === 12) {
@@ -293,6 +303,13 @@ function expandTrackings(raw) {
     }
   }
   return out;
+}
+
+// 시트 송장칸(raw)에 target 송장이 들어있는지 — 숫자만 비교(형식 차이 무시)
+function trackingMatches(rawSheetTracking, target) {
+  const td = onlyDigits(target);
+  if (!td) return false;
+  return expandTrackings(rawSheetTracking).some(t => onlyDigits(t) === td);
 }
 
 // ── 상태 ──
@@ -554,7 +571,7 @@ async function loadScanList(silent) {
 
       const rec = records.find((r) => {
         if (!r.tracking) return false;
-        return expandTrackings(r.tracking).includes(tracking);
+        return trackingMatches(r.tracking, tracking);
       });
       // source 판정: 접수내역에서 찾았으면 그 source 우선 (시트 E열이 틀려도 접수내역 기준)
       const isSchool = rec ? (rec.source === "school") : (source === "school");
@@ -1042,6 +1059,31 @@ document.getElementById("syncContactBtn").addEventListener("click", async () => 
   }
 });
 
+// 구글 연락처 가져오기 → 거래처연락처 탭에 추가
+document.getElementById("importContactBtn").addEventListener("click", async () => {
+  const btn = document.getElementById("importContactBtn");
+  const tag = document.getElementById("contactSyncTag");
+  if (!confirm("핸드폰 구글 계정에 저장된 연락처를 거래처연락처 탭에 추가할까요?\n(이름에 2606이 있거나, 탭에 없는 새 번호만 · 중복 제외)")) return;
+  btn.disabled = true;
+  const orig = btn.textContent;
+  btn.textContent = "⏳ 가져오는 중...";
+  try {
+    const res = await fetch(APPS_URL+"?type=importContacts");
+    if (!res.ok) throw new Error("서버 오류 ("+res.status+")");
+    const txt = await res.text();
+    tag.innerHTML = '<div class="file-tag">✅ '+esc(txt)+'</div>';
+    showToast("✅ "+txt);
+    // 추가된 내용 반영을 위해 거래처연락처 다시 불러오기
+    document.getElementById("syncContactBtn").click();
+  } catch(e) {
+    tag.innerHTML = '<div style="color:#b91c1c;font-size:12px;margin-top:8px;">❌ '+esc(e.message)+'</div>';
+    showToast("❌ 가져오기 실패: "+e.message, true);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = orig;
+  }
+});
+
 function renderRecordPreview() {
   const card = document.getElementById("recordPreviewCard");
   const list = document.getElementById("recordList");
@@ -1069,7 +1111,7 @@ function handleSearch() {
 
   const found = records.find((r) => {
     if (!r.tracking) return false;
-    return expandTrackings(r.tracking).includes(query);
+    return trackingMatches(r.tracking, query);
   });
 
   if (found) {
