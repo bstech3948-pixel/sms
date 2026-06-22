@@ -206,10 +206,6 @@ input { width:100%; padding:9px 10px; border:1px solid #e5e7eb; border-radius:8p
         <button class="btn btn-green" id="syncContactBtn">🔄 거래처연락처 불러오기</button>
         <span class="sync-status" id="contactSyncStatus">아직 불러오지 않았어요</span>
       </div>
-      <div class="sync-row" style="margin-top:6px;">
-        <button class="btn btn-sm" id="importContactBtn" style="background:#0891b2;">📱 구글 연락처 가져오기 (시트에 추가)</button>
-      </div>
-      <p class="help-text" style="margin-top:6px;margin-bottom:0;">핸드폰에서 이 구글 계정에 저장한 연락처를 거래처연락처 탭에 추가해요. (이름에 2606이 있거나, 탭에 없는 새 번호 / 중복은 자동 제외)</p>
       <div id="contactSyncTag"></div>
     </div>
 
@@ -1060,31 +1056,6 @@ document.getElementById("syncContactBtn").addEventListener("click", async () => 
   } finally {
     btn.disabled = false;
     btn.textContent = "🔄 거래처연락처 불러오기";
-  }
-});
-
-// 구글 연락처 가져오기 → 거래처연락처 탭에 추가
-document.getElementById("importContactBtn").addEventListener("click", async () => {
-  const btn = document.getElementById("importContactBtn");
-  const tag = document.getElementById("contactSyncTag");
-  if (!confirm("핸드폰 구글 계정에 저장된 연락처를 거래처연락처 탭에 추가할까요?\n(이름에 2606이 있거나, 탭에 없는 새 번호만 · 중복 제외)")) return;
-  btn.disabled = true;
-  const orig = btn.textContent;
-  btn.textContent = "⏳ 가져오는 중...";
-  try {
-    const res = await fetch(APPS_URL+"?type=importContacts");
-    if (!res.ok) throw new Error("서버 오류 ("+res.status+")");
-    const txt = await res.text();
-    tag.innerHTML = '<div class="file-tag">✅ '+esc(txt)+'</div>';
-    showToast("✅ "+txt);
-    // 추가된 내용 반영을 위해 거래처연락처 다시 불러오기
-    document.getElementById("syncContactBtn").click();
-  } catch(e) {
-    tag.innerHTML = '<div style="color:#b91c1c;font-size:12px;margin-top:8px;">❌ '+esc(e.message)+'</div>';
-    showToast("❌ 가져오기 실패: "+e.message, true);
-  } finally {
-    btn.disabled = false;
-    btn.textContent = orig;
   }
 });
 
