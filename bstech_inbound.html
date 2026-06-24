@@ -174,7 +174,7 @@ function loadTodayInbound() {
         }
         loaded.push({ tracking: tracking, time: inDate, status: "ok", name: name, items: its.join(", ") });
       }
-      loaded.reverse(); // 최신이 위로
+      // 시트가 이미 최신순(위가 최신)으로 쌓이므로 그대로 사용
       scanHistory = loaded;
       renderList();
     })
