@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>(주)창성비에스 입고 스캔</title>
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif; background:#f9fafb; }
+.wrap { max-width:480px; margin:0 auto; padding-bottom:40px; }
+.header { background:#0f766e; padding:16px; text-align:center; }
+.header h1 { color:#fff; font-size:16px; }
+.header p { color:rgba(255,255,255,0.6); font-size:11px; margin-top:4px; }
+.body { padding:12px; }
+.card { background:#fff; border-radius:12px; padding:14px; margin-bottom:10px; box-shadow:0 1px 3px rgba(0,0,0,0.06); }
+.card-title { font-size:14px; font-weight:700; color:#374151; margin-bottom:10px; }
+#reader { width:100%; border-radius:8px; overflow:hidden; }
+.scan-result { margin-top:10px; padding:10px; border-radius:8px; font-size:13px; font-weight:600; text-align:center; display:none; white-space:pre-line; }
+.success { background:#ccfbf1; color:#0f766e; display:block; }
+.error { background:#fef2f2; color:#b91c1c; display:block; }
+.saving { background:#eef2ff; color:#3730a3; display:block; }
+.manual-row { display:flex; gap:8px; margin-top:10px; }
+.manual-row input { flex:1; padding:10px; border:1px solid #e5e7eb; border-radius:8px; font-size:15px; font-family:inherit; }
+.manual-row button { background:#0f766e; color:#fff; border:none; border-radius:8px; padding:0 16px; font-size:14px; font-weight:600; cursor:pointer; white-space:nowrap; font-family:inherit; }
+.count-badge { background:#0f766e; color:#fff; padding:6px 14px; border-radius:20px; font-size:13px; font-weight:600; text-align:center; margin-bottom:10px; }
+.scan-list { max-height:340px; overflow-y:auto; }
+.scan-item { display:block; padding:10px; background:#f9fafb; border-radius:8px; margin-bottom:6px; border:1px solid #e5e7eb; }
+.scan-no { font-size:14px; font-weight:600; color:#1f2937; }
+.scan-time { font-size:11px; color:#9ca3af; }
+.scan-status { font-size:11px; padding:2px 8px; border-radius:10px; }
+.status-ok { background:#ccfbf1; color:#0f766e; }
+.status-fail { background:#fef2f2; color:#b91c1c; }
+.empty-msg { text-align:center; color:#9ca3af; font-size:13px; padding:20px 0; }
+.start-btn { width:100%; padding:14px; background:#0f766e; color:#fff; border:none; border-radius:10px; font-size:15px; font-weight:700; cursor:pointer; font-family:inherit; margin-bottom:10px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="header">
+    <h1>📦 (주)창성비에스 입고 스캔</h1>
+    <p>입고된 택배 송장 바코드를 찍으세요</p>
+  </div>
+  <div class="body">
+    <div class="card">
+      <div class="card-title">📷 바코드 스캔</div>
+
+      <label class="start-btn" id="photoLabel" style="display:block; text-align:center; cursor:pointer;">
+        📷 바코드 촬영하기
+        <input type="file" accept="image/*" capture="environment" id="photoInput" style="display:none;">
+      </label>
+
+      <div id="reader" style="display:none;"></div>
+      <div class="scan-result" id="scanResult"></div>
+      <div id="decodeStatus" style="text-align:center; font-size:12px; color:#6b7280; margin-top:8px;"></div>
+
+      <div class="manual-row">
+        <input type="text" id="manualInput" placeholder="직접 입력 (송장번호)" inputmode="numeric">
+        <button id="manualBtn">저장</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="count-badge" id="countBadge">오늘 입고: 0건</div>
+      <div class="card-title">오늘 입고 목록</div>
+      <div class="scan-list" id="scanList">
+        <div class="empty-msg">아직 입고된 송장이 없어요</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── 설정 ──
+var APPS_URL = "https://script.google.com/macros/s/AKfycbyBlatSXyWdlBJ9vtwe7BINXRVy3PnmwvONoAkVCrv4CcSjXh8YJXUzidEh7SbWe34K/exec";
+var scanHistory = [];
+var lastScan = "";
+var lastScanTime = 0;
+
+function showResult(msg, type) {
+  var el = document.getElementById("scanResult");
+  el.className = "scan-result " + type;
+  el.textContent = msg;
+  el.style.display = "block";
+  if (type !== "saving") {
+    setTimeout(function(){ el.style.display = "none"; }, 3500);
+  }
+}
+
+// 송장번호 형식 변환 (12자리 → 4-4-4)
+function formatTracking(num) {
+  var digits = num.replace(/[^\d]/g, "");
+  if (digits.length === 12) return digits.substring(0,4)+"-"+digits.substring(4,8)+"-"+digits.substring(8,12);
+  if (digits.length === 13) return digits.substring(0,4)+"-"+digits.substring(4,8)+"-"+digits.substring(8,13);
+  var parts = [];
+  for (var i = 0; i < digits.length; i += 4) parts.push(digits.substring(i, Math.min(i+4, digits.length)));
+  return parts.join("-");
+}
+
+// 오늘 날짜 M/D
+function todayMD() {
+  var d = new Date();
+  return (d.getMonth()+1) + "/" + d.getDate();
+}
+
+// 입고 저장
+function saveScan(tracking) {
+  if (!tracking) return;
+  tracking = tracking.trim();
+  var formatted = formatTracking(tracking);
+
+  var now = Date.now();
+  if (formatted === lastScan && (now - lastScanTime) < 2000) return;
+  lastScan = formatted;
+  lastScanTime = now;
+
+  // 이미 입고된 번호인지 (화면 목록 기준)
+  for (var i = 0; i < scanHistory.length; i++) {
+    if (scanHistory[i].tracking === formatted) {
+      showResult("이미 입고된 번호예요: " + formatted, "error");
+      return;
+    }
+  }
+
+  showResult("저장 중... " + formatted, "saving");
+
+  fetch(APPS_URL + "?type=addInbound&tracking=" + encodeURIComponent(formatted))
+    .then(function(res) { return res.text(); })
+    .then(function(result) {
+      // "입고 저장: 송장 / 상호 / 품목요약"
+      var parts = result.split(" / ");
+      var matchName = parts.length >= 2 ? parts[1] : "";
+      var matchItems = parts.length >= 3 ? parts[2] : "";
+      var info = matchName ? (matchName + (matchItems ? "\n" + matchItems : "")) : "(접수내역에서 상호를 못 찾음)";
+      scanHistory.unshift({
+        tracking: formatted, time: todayMD(),
+        status: "ok", name: matchName, items: matchItems
+      });
+      renderList();
+      showResult("✅ 입고 완료! " + formatted + "\n" + info, matchName ? "success" : "error");
+      document.getElementById("manualInput").value = "";
+      if (navigator.vibrate) navigator.vibrate(150);
+      // 시트 반영 후 동기화
+      setTimeout(loadTodayInbound, 1500);
+    })
+    .catch(function(err) {
+      scanHistory.unshift({ tracking: formatted, time: todayMD(), status: "fail" });
+      renderList();
+      showResult("⚠️ 저장 요청은 보냈어요 (확인 필요)", "error");
+    });
+}
+
+// 입고관리 탭에서 오늘 입고분 불러오기 (새로고침해도 유지)
+function loadTodayInbound() {
+  fetch(APPS_URL + "?type=inboundList")
+    .then(function(res) { return res.json(); })
+    .then(function(data) {
+      var today = todayMD();
+      var loaded = [];
+      // data[0]은 헤더. 1행부터: 입고일,송장,상호,품목1,수량1,품목2,수량2,품목3,수량3
+      for (var i = 1; i < data.length; i++) {
+        var inDate = String(data[i][0] || "").trim();
+        var tracking = String(data[i][1] || "").trim();
+        var name = String(data[i][2] || "").trim();
+        if (!tracking) continue;
+        if (inDate !== today) continue; // 오늘 것만
+        // 품목 요약
+        var its = [];
+        var pairs = [[3,4],[5,6],[7,8]];
+        for (var p = 0; p < pairs.length; p++) {
+          var nm = String(data[i][pairs[p][0]] || "").trim();
+          var qty = String(data[i][pairs[p][1]] || "").trim();
+          if (nm) its.push(nm + (qty ? " " + qty + "개" : ""));
+        }
+        loaded.push({ tracking: tracking, time: inDate, status: "ok", name: name, items: its.join(", ") });
+      }
+      loaded.reverse(); // 최신이 위로
+      scanHistory = loaded;
+      renderList();
+    })
+    .catch(function(err) { /* 실패 시 기존 목록 유지 */ });
+}
+
+function renderList() {
+  var list = document.getElementById("scanList");
+  document.getElementById("countBadge").textContent = "오늘 입고: " + scanHistory.length + "건";
+  if (scanHistory.length === 0) {
+    list.innerHTML = '<div class="empty-msg">아직 입고된 송장이 없어요</div>';
+    return;
+  }
+  list.innerHTML = scanHistory.map(function(s) {
+    var statusClass = s.status === "ok" ? "status-ok" : "status-fail";
+    var statusText = s.status === "ok" ? "입고완료" : "확인필요";
+    return '<div class="scan-item">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;">' +
+      '<span class="scan-no">' + s.tracking + '</span>' +
+      '<span class="scan-status ' + statusClass + '">' + statusText + '</span></div>' +
+      (s.name ? '<div style="font-size:13px;color:#0f766e;margin-top:3px;font-weight:600;">' + s.name + '</div>'
+              : '<div style="font-size:12px;color:#b91c1c;margin-top:3px;">⚠️ 상호 미매칭 (접수내역 확인)</div>') +
+      (s.items ? '<div style="font-size:12px;color:#6b7280;margin-top:2px;">' + s.items + '</div>' : '') +
+      '</div>';
+  }).join("");
+}
+
+// 사진 촬영 → 바코드 인식
+document.getElementById("photoInput").addEventListener("change", function(e) {
+  var file = e.target.files[0];
+  if (!file) return;
+  document.getElementById("decodeStatus").textContent = "바코드 인식 중...";
+  var html5QrCode = new Html5Qrcode("reader", {
+    formatsToSupport: [
+      Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.CODE_39,
+      Html5QrcodeSupportedFormats.ITF, Html5QrcodeSupportedFormats.EAN_13,
+      Html5QrcodeSupportedFormats.EAN_8, Html5QrcodeSupportedFormats.CODABAR
+    ]
+  });
+  html5QrCode.scanFile(file, true)
+    .then(function(decodedText) {
+      document.getElementById("decodeStatus").textContent = "";
+      var cleaned = decodedText.replace(/[^0-9\-]/g, "");
+      if (!cleaned || cleaned.length < 8) {
+        showResult("❌ 송장번호가 아닌 것 같아요: " + decodedText, "error");
+        document.getElementById("decodeStatus").textContent = "다시 촬영해주세요. 바코드에 가까이 찍어주세요.";
+        return;
+      }
+      // 확인창 없이 바로 저장 (빠른 연속 스캔)
+      saveScan(cleaned);
+    })
+    .catch(function(err) {
+      document.getElementById("decodeStatus").textContent = "";
+      showResult("❌ 바코드를 인식하지 못했어요", "error");
+      document.getElementById("decodeStatus").innerHTML = "다시 촬영해주세요!<br><b>팁:</b> 바코드에 최대한 가까이, 밝은 곳에서 찍어주세요";
+    });
+  e.target.value = "";
+});
+
+document.getElementById("manualBtn").addEventListener("click", function() {
+  var val = document.getElementById("manualInput").value.trim();
+  if (val) saveScan(val);
+});
+document.getElementById("manualInput").addEventListener("keydown", function(e) {
+  if (e.key === "Enter") {
+    var val = this.value.trim();
+    if (val) saveScan(val);
+  }
+});
+
+// 페이지 열릴 때 오늘 입고 목록 불러오기
+loadTodayInbound();
+</script>
+</body>
+</html>
