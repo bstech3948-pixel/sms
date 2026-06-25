@@ -486,6 +486,10 @@ document.querySelectorAll(".tab").forEach((btn) => {
     if (btn.dataset.tab === "scan") {
       loadScanList(true);
     }
+    // 내역 탭을 누르면 시트에서 발송내역 불러오기
+    if (btn.dataset.tab === "history") {
+      loadHistoryFromSheet();
+    }
   });
 });
 
@@ -576,7 +580,7 @@ async function loadScanList(silent) {
       const isSent = sentFlag === "발송완료" || sentTrackings.includes(tracking);
       scanList.push({ time, tracking, record: rec || null, source: isSchool ? "school" : "main", sent: isSent });
     }
-    scanList.reverse(); // 최신순
+    // 시트가 이미 최신순(위가 최신)으로 쌓이므로 그대로 사용
 
     const now = new Date().toLocaleString("ko-KR");
     status.textContent = "마지막 업데이트: "+now;
@@ -1168,8 +1172,20 @@ document.getElementById("sendBtn").addEventListener("click", async () => {
 });
 
 function addHistory(name, phone, tracking, msg, status) {
-  history.unshift({ time:new Date().toLocaleString("ko-KR"), name, phone, tracking, msg, status });
+  const time = new Date().toLocaleString("ko-KR");
+  history.unshift({ time, name, phone, tracking, msg, status });
   saveHistory();
+  // 구글시트 '발송내역'에도 기록 (용량 제한 없이 영구 보관 · 모든 기기 공유)
+  try {
+    const q = "?type=logHistory"
+      + "&time=" + encodeURIComponent(time)
+      + "&name=" + encodeURIComponent(name || "")
+      + "&phone=" + encodeURIComponent(phone || "")
+      + "&tracking=" + encodeURIComponent(tracking || "")
+      + "&status=" + encodeURIComponent(status || "")
+      + "&msg=" + encodeURIComponent((msg || "").substring(0, 300));
+    fetch(APPS_URL + q);
+  } catch(e) {}
   renderHistory();
 }
 
@@ -1191,12 +1207,81 @@ document.getElementById("clearHistoryBtn").addEventListener("click", () => {
   showToast("발송 내역이 삭제됐어요.");
 });
 
+// 내역: 시트(영구) + localStorage(이 기기) 병합본
+let mergedHistory = null;   // null이면 아직 시트 안 불러옴 → localStorage만 사용
+let historyPage = 0;
+const HIST_PAGE_SIZE = 10;
+
+// 시트에서 발송내역 불러와 localStorage와 병합
+async function loadHistoryFromSheet() {
+  try {
+    const res = await fetch(APPS_URL + "?type=getHistory");
+    if (!res.ok) throw new Error("서버 오류");
+    const data = await res.json();
+    const fromSheet = [];
+    for (let i = 1; i < data.length; i++) {
+      const time = String(data[i][0] || "");
+      const name = String(data[i][1] || "");
+      const phone = String(data[i][2] || "");
+      const tracking = String(data[i][3] || "");
+      const status = String(data[i][4] || "");
+      const msg = String(data[i][5] || "");
+      if (!time && !name) continue;
+      fromSheet.push({ time, name, phone, tracking, msg, status });
+    }
+    // 병합 + 중복 제거 (시간+송장 기준)
+    const seen = {};
+    const merged = [];
+    fromSheet.concat(history).forEach(h => {
+      const key = (h.time || "") + "|" + (h.tracking || "") + "|" + (h.name || "");
+      if (seen[key]) return;
+      seen[key] = true;
+      merged.push(h);
+    });
+    // 시간 내림차순 정렬 (최신 위로)
+    merged.sort((a, b) => new Date(b.time) - new Date(a.time));
+    mergedHistory = merged;
+    historyPage = 0;
+    renderHistory();
+  } catch(e) {
+    // 시트 못 불러오면 localStorage만 사용 (조용히)
+  }
+}
+
+function getHistoryList() {
+  return mergedHistory !== null ? mergedHistory : history;
+}
+
+// 날짜 키 추출: "2026. 6. 25. 오후 3:30" → "2026-6-25"
+function getDateKey(timeStr) {
+  const m = String(timeStr || "").match(/(\d{4})\D+(\d{1,2})\D+(\d{1,2})/);
+  return m ? (m[1] + "-" + m[2] + "-" + m[3]) : "";
+}
+function dateKeyOf(d) {
+  return d.getFullYear() + "-" + (d.getMonth() + 1) + "-" + d.getDate();
+}
+
 function renderHistory() {
-  document.getElementById("historyCount").textContent = history.length;
+  const allRaw = getHistoryList();
+  // 최근 2일치(오늘 + 어제)만 표시
+  const todayKey = dateKeyOf(new Date());
+  const yesterdayKey = dateKeyOf(new Date(Date.now() - 86400000));
+  const all = allRaw.filter(r => {
+    const k = getDateKey(r.time);
+    return k === todayKey || k === yesterdayKey;
+  });
+  document.getElementById("historyCount").textContent = all.length;
   const list = document.getElementById("historyList");
-  if (history.length===0) { list.innerHTML='<div class="empty">아직 발송 내역이 없어요</div>'; return; }
-  list.innerHTML = history.map((r) => {
-    const isUnsure = r.status==="응답확인불가";
+  if (all.length === 0) { list.innerHTML = '<div class="empty">최근 2일간 발송한 내역이 없어요</div>'; return; }
+
+  const totalPages = Math.max(1, Math.ceil(all.length / HIST_PAGE_SIZE));
+  if (historyPage >= totalPages) historyPage = totalPages - 1;
+  if (historyPage < 0) historyPage = 0;
+  const start = historyPage * HIST_PAGE_SIZE;
+  const pageItems = all.slice(start, start + HIST_PAGE_SIZE);
+
+  const cards = pageItems.map((r) => {
+    const isUnsure = r.status === "응답확인불가";
     const tag = isUnsure
       ? '<span class="badge-warn">⚠ 알리고에서 직접 확인 필요</span>'
       : '<span class="badge-success">✅ 발송 성공</span>';
@@ -1204,10 +1289,24 @@ function renderHistory() {
       '<div class="hist-card">'+
         '<div class="hist-top"><span class="hist-name">'+esc(r.name)+' ('+esc(r.phone)+')</span>'+tag+'</div>'+
         '<div class="hist-time">'+esc(r.time)+' · 송장 '+esc(r.tracking)+'</div>'+
-        '<div class="hist-msg">'+esc(r.msg)+'</div>'+
+        (r.msg ? '<div class="hist-msg">'+esc(r.msg)+'</div>' : '')+
       '</div>'
     );
   }).join("");
+
+  const pager =
+    '<div class="pager" style="margin-top:14px;">'+
+      '<button onclick="changeHistoryPage(-1)" '+(historyPage===0?'disabled':'')+'>← 이전</button>'+
+      '<span class="pager-info">'+(historyPage+1)+' / '+totalPages+' 페이지 (최근 2일 '+all.length+'건)</span>'+
+      '<button onclick="changeHistoryPage(1)" '+(historyPage>=totalPages-1?'disabled':'')+'>다음 →</button>'+
+    '</div>';
+
+  list.innerHTML = cards + pager;
+}
+
+function changeHistoryPage(delta) {
+  historyPage += delta;
+  renderHistory();
 }
 
 renderHistory();
