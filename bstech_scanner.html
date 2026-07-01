@@ -152,22 +152,28 @@
       F.CODE_128, F.CODE_39, F.CODABAR, F.ITF, F.EAN_13, F.EAN_8, F.UPC_A, F.QR_CODE
     ]);
     hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
-    return new ZXing.BrowserMultiFormatReader(hints, 200); // 200ms 간격
+    return new ZXing.BrowserMultiFormatReader(hints, 100); // 100ms 간격 (더 자주 시도)
   }
 
+  let scanTicks=0;
   async function start(){
     if(running) return;
-    if(typeof ZXing==="undefined"){ statusEl.textContent="스캐너 로딩 실패 — 인터넷 연결 확인 후 새로고침"; return; }
+    if(typeof ZXing==="undefined"){ statusEl.textContent="⚠ 스캐너 로딩 실패 — 인터넷 연결 확인 후 새로고침"; return; }
     statusEl.textContent="카메라 여는 중…";
     reader=makeReader();
+    scanTicks=0;
     const onDecode=(result,err)=>{
       if(result){
         const code=result.getText();
         const t=Date.now();
         if(code===lastCode && t-lastTime<2500) return; // 중복 방지
         lastCode=code; lastTime=t;
-        statusEl.textContent="인식됨: "+code;
+        statusEl.textContent="✅ 인식됨: "+code;
         showResult(code);
+      } else {
+        // 라이브러리는 도는데 아직 못 읽는 중 — 살아있음을 표시
+        scanTicks++;
+        if(running && scanTicks%10===0) statusEl.textContent="🔍 읽는 중… 바코드를 흰 칸에 가로로 꽉 차게 (10~15cm)";
       }
     };
     // 후면 카메라 우선 (아이폰 포함)
