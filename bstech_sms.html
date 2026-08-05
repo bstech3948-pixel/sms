@@ -175,7 +175,7 @@ input { width:100%; padding:9px 10px; border:1px solid #e5e7eb; border-radius:8p
 
     <div class="info-box" style="margin-top:8px;">
       📱 핸드폰 바코드 스캔 페이지<br>
-      <a href="https://script.google.com/macros/s/AKfycbyBlatSXyWdlBJ9vtwe7BINXRVy3PnmwvONoAkVCrv4CcSjXh8YJXUzidEh7SbWe34K/exec?type=scanner" target="_blank" style="color:#1d4ed8; font-weight:600;">여기를 클릭해서 핸드폰으로 공유하세요!</a>
+      <a href="https://script.google.com/macros/s/AKfycbwsWuaUxySgL4Qbrk7TSGqh4bMGYJo2cA-nKUx8S0Qcm9JiQeyitE3MTO9aNRRzENUX/exec?type=scanner" target="_blank" style="color:#1d4ed8; font-weight:600;">여기를 클릭해서 핸드폰으로 공유하세요!</a>
     </div>
   </div>
 
@@ -207,6 +207,15 @@ input { width:100%; padding:9px 10px; border:1px solid #e5e7eb; border-radius:8p
         <span class="sync-status" id="contactSyncStatus">아직 불러오지 않았어요</span>
       </div>
       <div id="contactSyncTag"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">④ 완료건 정리 (완료건 탭으로 이동)</div>
+      <p class="help-text">아래 조건에 맞는 건을 "202607-08월 완료건" 탭으로 옮겨요. (최신접수내역에서는 삭제돼요)<br>
+      · 조건1: 진행사항(P)에 <b>납품</b> + 현황(Q) 비어있음 + 입금(S)·계산서(T) 있음<br>
+      · 조건2: 진행사항(P)에 <b>반품</b> + 현황(Q) <b>완료</b> + 입금(S)·계산서(T) 있음</p>
+      <button class="btn btn-sm" id="archiveBtn" style="background:#b45309;">📦 완료건 정리하기</button>
+      <div id="archiveTag"></div>
     </div>
 
     <div class="card" id="recordPreviewCard" style="display:none;">
@@ -247,7 +256,7 @@ const SENDER     = "01071543948";
 const ACCOUNT    = "국민은행 282437-04-005416 (창성비에스)";
 const ACCOUNT_KAKAO = "카카오뱅크 3333 21 0047953 (한상은)";
 const PROMO_LINE = "재코팅시 이점 꼭 알아주세요!\nhttps://blog.naver.com/bstech-re/223486484510";
-const APPS_URL   = "https://script.google.com/macros/s/AKfycbyBlatSXyWdlBJ9vtwe7BINXRVy3PnmwvONoAkVCrv4CcSjXh8YJXUzidEh7SbWe34K/exec";
+const APPS_URL   = "https://script.google.com/macros/s/AKfycbwsWuaUxySgL4Qbrk7TSGqh4bMGYJo2cA-nKUx8S0Qcm9JiQeyitE3MTO9aNRRzENUX/exec";
 
 // ── CSV 컬럼 위치 ──
 const COL_NAME=2, COL_MEMO=3, COL_TOTAL=14, COL_STATUS=15, COL_TRACKING=17, COL_INVOICE=19;
@@ -616,6 +625,47 @@ document.getElementById("refreshScanBtn").addEventListener("click", async () => 
     await loadScanList(true);
   } catch(e) {
     showToast("❌ 재매칭 실패: " + e.message, true);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = orig;
+  }
+});
+
+// 완료건 정리: 미리보기 → 확인 → 이동
+document.getElementById("archiveBtn").addEventListener("click", async () => {
+  const btn = document.getElementById("archiveBtn");
+  const tag = document.getElementById("archiveTag");
+  btn.disabled = true;
+  const orig = btn.textContent;
+  btn.textContent = "⏳ 확인 중...";
+  try {
+    // 1) 미리보기
+    const res = await fetch(APPS_URL + "?type=previewCompleted");
+    const pv = await res.json();
+    if (pv.error) {
+      tag.innerHTML = '<div style="color:#b91c1c;font-size:12px;margin-top:8px;">❌ ' + esc(pv.error) + '</div>';
+      showToast("❌ " + pv.error, true);
+      return;
+    }
+    if (pv.count === 0) {
+      tag.innerHTML = '<div style="color:#6b7280;font-size:12px;margin-top:8px;">옮길 완료건이 없어요.</div>';
+      showToast("옮길 완료건이 없어요");
+      return;
+    }
+    // 2) 확인
+    const nameList = pv.names.slice(0, 20).join(", ") + (pv.names.length > 20 ? " 외" : "");
+    const ok = confirm("완료건 " + pv.count + "건을 '202607-08월 완료건' 탭으로 옮길까요?\n\n"
+      + "[대상 상호]\n" + nameList + "\n\n※ 최신접수내역에서는 삭제됩니다.");
+    if (!ok) { showToast("취소했어요"); return; }
+    // 3) 실제 이동
+    btn.textContent = "⏳ 옮기는 중...";
+    const res2 = await fetch(APPS_URL + "?type=archiveCompleted");
+    const txt = await res2.text();
+    tag.innerHTML = '<div class="file-tag">✅ ' + esc(txt) + '</div>';
+    showToast("✅ " + txt);
+  } catch(e) {
+    tag.innerHTML = '<div style="color:#b91c1c;font-size:12px;margin-top:8px;">❌ ' + esc(e.message) + '</div>';
+    showToast("❌ 완료건 정리 실패: " + e.message, true);
   } finally {
     btn.disabled = false;
     btn.textContent = orig;
