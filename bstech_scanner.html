@@ -73,10 +73,15 @@ body { font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif; background:
 
 <script>
 // ── 설정 ──
-var APPS_URL = "https://script.google.com/macros/s/AKfycbwsWuaUxySgL4Qbrk7TSGqh4bMGYJo2cA-nKUx8S0Qcm9JiQeyitE3MTO9aNRRzENUX/exec";
+var APPS_URL = "https://script.google.com/macros/s/AKfycbwZkOoeWpcIrUof5i-Z-WIJfsHN8R_2bkYk2AobjjDyl1dWRMjZvyEV4Ju-q-S-nhwZ/exec";
 var scanHistory = [];
 var lastScan = "";
 var lastScanTime = 0;
+
+// 숫자만 추출 (하이픈·공백·형식 차이 무시하고 비교용)
+function onlyDigits(s) {
+  return String(s || "").replace(/[^0-9]/g, "");
+}
 
 // ── 결과 표시 ──
 function showResult(msg, type) {
@@ -123,10 +128,13 @@ function saveScan(tracking) {
   lastScan = formatted;
   lastScanTime = now;
 
-  // 이미 스캔한 번호인지 확인
+  // 이미 스캔한 번호인지 확인 (숫자만 비교 → 하이픈·형식 차이 무시)
+  var fd = onlyDigits(formatted);
   for (var i = 0; i < scanHistory.length; i++) {
-    if (scanHistory[i].tracking === formatted) {
-      showResult("이미 스캔한 번호예요: " + formatted, "error");
+    if (onlyDigits(scanHistory[i].tracking) === fd) {
+      var dupName = scanHistory[i].name ? " (" + scanHistory[i].name + ")" : "";
+      showResult("⚠️ 이미 오늘 찍은 송장이에요\n" + formatted + dupName, "error");
+      if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
       return;
     }
   }
@@ -341,6 +349,13 @@ document.getElementById("manualInput").addEventListener("keydown", function(e) {
 
 // ── 페이지 열릴 때 오늘 스캔 목록 불러오기 (새로고침해도 복원) ──
 loadTodayScans();
+
+// 다른 화면 갔다 돌아오면 목록 다시 불러오기 (다른 폰이 찍은 것도 반영)
+document.addEventListener("visibilitychange", function() {
+  if (document.visibilityState === "visible") {
+    loadTodayScans();
+  }
+});
 </script>
 </body>
 </html>
