@@ -200,10 +200,10 @@ input { width:100%; padding:9px 10px; border:1px solid #e5e7eb; border-radius:8p
     </div>
 
     <div class="card">
-      <div class="card-title">③ 거래처연락처 (구글 시트 연동)</div>
-      <p class="help-text">구글 시트의 "거래처연락처" 탭에서 자동으로 불러와요.</p>
+      <div class="card-title">③ 신용송장주소록 (연락처 소스)</div>
+      <p class="help-text">문자 발송 연락처를 "신용송장주소록" 탭(받는분성명·받는전화번호)에서 자동으로 불러와요.</p>
       <div class="sync-row">
-        <button class="btn btn-green" id="syncContactBtn">🔄 거래처연락처 불러오기</button>
+        <button class="btn btn-green" id="syncContactBtn">🔄 신용송장주소록 불러오기</button>
         <span class="sync-status" id="contactSyncStatus">아직 불러오지 않았어요</span>
       </div>
       <div id="contactSyncTag"></div>
@@ -369,9 +369,11 @@ function normalizeShopName(name) {
 function findPhoneByName(targetName) {
   const target = normalizeShopName(targetName);
   if (!target) return null;
+  // 1) 정규화 완전일치
   for (const c of contacts) {
     if (normalizeShopName(c.name)===target) return c.phone;
   }
+  // 2) 포함관계 (한쪽이 다른쪽에 통째로 들어있음, 더 긴 상호 우선)
   let best=null, bestLen=0;
   for (const c of contacts) {
     const n = normalizeShopName(c.name);
@@ -551,8 +553,8 @@ async function loadScanList(silent) {
 
     // 2단계: 거래처연락처 자동 불러오기 (없으면)
     if (contacts.length===0) {
-      status.textContent = "② 거래처연락처 불러오는 중...";
-      const res2 = await fetch(APPS_URL+"?type=contacts");
+      status.textContent = "② 신용송장주소록 불러오는 중...";
+      const res2 = await fetch(APPS_URL+"?type=addrbook");
       if (res2.ok) {
         const data2 = await res2.json();
         const parsed2 = [];
@@ -1087,9 +1089,9 @@ document.getElementById("syncContactBtn").addEventListener("click", async () => 
   const tag    = document.getElementById("contactSyncTag");
   btn.disabled = true;
   btn.textContent = "⏳ 불러오는 중...";
-  status.textContent = "거래처연락처를 가져오고 있어요...";
+  status.textContent = "신용송장주소록을 가져오고 있어요...";
   try {
-    const res = await fetch(APPS_URL+"?type=contacts");
+    const res = await fetch(APPS_URL+"?type=addrbook");
     if (!res.ok) throw new Error("서버 오류 ("+res.status+")");
     const data = await res.json();
     const parsed = [];
@@ -1101,15 +1103,15 @@ document.getElementById("syncContactBtn").addEventListener("click", async () => 
     contacts = parsed;
     const now = new Date().toLocaleString("ko-KR");
     status.textContent = "마지막 업데이트: "+now;
-    tag.innerHTML = '<div class="file-tag">✅ 거래처연락처 · '+contacts.length+'개 불러옴</div>';
-    showToast("✅ 거래처 연락처 "+parsed.length+"개 불러오기 완료!");
+    tag.innerHTML = '<div class="file-tag">✅ 신용송장주소록 · '+contacts.length+'개 불러옴</div>';
+    showToast("✅ 신용송장주소록 "+parsed.length+"개 불러오기 완료!");
   } catch(e) {
     status.textContent = "불러오기 실패";
     tag.innerHTML = '<div style="color:#b91c1c;font-size:12px;margin-top:8px;">❌ '+esc(e.message)+'</div>';
     showToast("❌ 거래처 불러오기 실패: "+e.message, true);
   } finally {
     btn.disabled = false;
-    btn.textContent = "🔄 거래처연락처 불러오기";
+    btn.textContent = "🔄 신용송장주소록 불러오기";
   }
 });
 
