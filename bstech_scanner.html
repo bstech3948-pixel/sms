@@ -41,6 +41,7 @@ body { font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif; background:
 .hist-name { font-size:14px; font-weight:700; color:#1f2937; }
 .hist-items { font-size:13px; color:#374151; margin-top:3px; line-height:1.5; }
 .hist-date { font-size:11px; color:#9ca3af; margin-top:4px; }
+.hist-prev { font-size:12px; color:#b45309; background:#fffbeb; border-radius:6px; padding:3px 8px; margin-top:4px; display:inline-block; }
 .hist-daygroup { font-size:12px; font-weight:700; color:#0f766e; margin:14px 0 7px; padding-bottom:4px; border-bottom:1px solid #e5e7eb; }
 .hist-daygroup:first-child { margin-top:0; }
 </style>
@@ -422,18 +423,19 @@ function loadSentHistory() {
     .then(function(res) { return res.json(); })
     .then(function(data) {
       histLoaded = true;
-      // 발송내역 시트: 0시간 1상호 2연락처 3송장 4상태 5메시지
+      // 발송내역 시트: 0시간 1상호 2연락처 3송장 4상태 5메시지 6진행사항(원래 P열)
       var cutoff = Date.now() - 14 * 86400000; // 최근 2주
       var rows = [];
       for (var i = 1; i < data.length; i++) {
         var time = String(data[i][0] || "").trim();
         var name = String(data[i][1] || "").trim();
         var msg  = String(data[i][5] || "");
+        var prev = String(data[i][6] || "").trim(); // 진행사항(원래 P열)
         if (!time && !name) continue;
         var d = new Date(time);
         if (isNaN(d.getTime())) d = null;
         if (d && d.getTime() < cutoff) continue; // 2주 넘은 건 제외
-        rows.push({ d: d, name: name, items: extractItems(msg) });
+        rows.push({ d: d, name: name, items: extractItems(msg), prev: prev });
       }
       // 시트가 최신순(위가 최신)으로 쌓임 → 그대로 사용
       if (rows.length === 0) {
@@ -456,6 +458,7 @@ function loadSentHistory() {
         html += '<div class="hist-item">' +
           '<div class="hist-name">' + esc(r.name || "(상호 없음)") + '</div>' +
           (r.items ? '<div class="hist-items">' + esc(r.items) + '</div>' : '') +
+          (r.prev ? '<div class="hist-prev">📌 ' + esc(r.prev) + '</div>' : '') +
           '</div>';
       });
       listEl.innerHTML = html;
