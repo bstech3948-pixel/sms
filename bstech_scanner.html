@@ -41,6 +41,7 @@ body { font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif; background:
 .hist-name { font-size:14px; font-weight:700; color:#1f2937; }
 .hist-items { font-size:13px; color:#374151; margin-top:3px; line-height:1.5; }
 .hist-date { font-size:11px; color:#9ca3af; margin-top:4px; }
+.hist-datetag { font-size:12px; font-weight:600; color:#0f766e; background:#e1f5ee; border-radius:10px; padding:1px 9px; margin-left:8px; float:right; }
 .hist-prev { font-size:12px; color:#b45309; background:#fffbeb; border-radius:6px; padding:3px 8px; margin-top:4px; display:inline-block; }
 .hist-daygroup { font-size:12px; font-weight:700; color:#0f766e; margin:14px 0 7px; padding-bottom:4px; border-bottom:1px solid #e5e7eb; }
 .hist-daygroup:first-child { margin-top:0; }
@@ -407,6 +408,21 @@ function extractItems(msg) {
   return m ? m[1].trim() : "";
 }
 
+// 시간 문자열을 Date로 파싱 (ISO + 한국어 "2026. 10. 8. 오후 4:54" 둘 다)
+function parseHistDate(timeStr) {
+  var s = String(timeStr || "").trim();
+  if (!s) return null;
+  var d = new Date(s);
+  if (!isNaN(d.getTime())) return d;
+  // 한국어 형식: "2026. 10. 8. ..." → 년/월/일 추출
+  var m = s.match(/(\d{4})\D+(\d{1,2})\D+(\d{1,2})/);
+  if (m) {
+    var dd = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+    if (!isNaN(dd.getTime())) return dd;
+  }
+  return null;
+}
+
 // 날짜키 "2026-10-7"
 function histDateKey(d) {
   return d.getFullYear() + "-" + (d.getMonth() + 1) + "-" + d.getDate();
@@ -414,6 +430,10 @@ function histDateKey(d) {
 function histDateLabel(d) {
   var days = ["일","월","화","수","목","금","토"];
   return (d.getMonth() + 1) + "월 " + d.getDate() + "일 (" + days[d.getDay()] + ")";
+}
+// 짧은 날짜 "10/8"
+function histDateShort(d) {
+  return (d.getMonth() + 1) + "/" + d.getDate();
 }
 
 var histRows = []; // 불러온 발송내역 보관 (검색용)
@@ -435,7 +455,7 @@ function loadSentHistory() {
         var msg  = String(data[i][5] || "");
         var prev = String(data[i][6] || "").trim(); // 진행사항(원래 P열)
         if (!time && !name) continue;
-        var d = new Date(time);
+        var d = parseHistDate(time);
         if (isNaN(d.getTime())) d = null;
         if (d && d.getTime() < cutoff) continue; // 2주 넘은 건 제외
         rows.push({ d: d, name: name, items: extractItems(msg), prev: prev });
@@ -492,8 +512,9 @@ function renderHistList(query) {
       var label = r.d ? histDateLabel(r.d) : "날짜 미상";
       html += '<div class="hist-daygroup">' + esc(label) + '</div>';
     }
+    var dateTag = r.d ? '<span class="hist-datetag">' + esc(histDateShort(r.d)) + '</span>' : '';
     html += '<div class="hist-item">' +
-      '<div class="hist-name">' + esc(r.name || "(상호 없음)") + '</div>' +
+      '<div class="hist-name">' + esc(r.name || "(상호 없음)") + dateTag + '</div>' +
       (r.items ? '<div class="hist-items">' + esc(r.items) + '</div>' : '') +
       (r.prev ? '<div class="hist-prev">📌 ' + esc(r.prev) + '</div>' : '') +
       '</div>';
