@@ -178,6 +178,16 @@ function saveScan(tracking) {
   fetch(APPS_URL + "?type=addScan&tracking=" + encodeURIComponent(formatted))
     .then(function(res) { return res.text(); })
     .then(function(result) {
+      // 서버에서 중복으로 판정한 경우 → 저장 안 됨, 중복 안내만
+      if (result.indexOf("중복") === 0) {
+        var dparts = result.split(" / ");
+        var dName = dparts.length >= 2 ? dparts[1] : "";
+        showResult("⚠️ 이미 스캔된 송장이에요\n" + formatted + (dName ? " (" + dName + ")" : ""), "error");
+        if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+        setTimeout(loadTodayScans, 800); // 목록 동기화
+        return;
+      }
+
       // 응답에서 상호명/품목 추출 (저장 완료: 송장 / 상호명 / 품목)
       var parts = result.split(" / ");
       var matchName = parts.length >= 2 ? parts[1] : "";
