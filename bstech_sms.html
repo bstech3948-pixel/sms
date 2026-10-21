@@ -167,7 +167,10 @@ input { width:100%; padding:9px 10px; border:1px solid #e5e7eb; border-radius:8p
       <div class="card">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
           <div class="card-title" style="margin-bottom:0;">스캔된 송장 목록</div>
-          <button class="btn btn-green btn-sm" id="sendAllScansBtn">📨 전체 문자 발송</button>
+          <div style="display:flex;gap:6px;">
+            <button class="btn btn-green btn-sm" id="sendAllScansBtn">📨 전체 문자 발송</button>
+            <button class="btn btn-sm" id="invAllBtn" style="background:#7c3aed;color:#fff;">🧾 전체 계산서</button>
+          </div>
         </div>
         <div id="scanList"></div>
       </div>
@@ -257,6 +260,7 @@ const ACCOUNT    = "국민은행 282437-04-005416 (창성비에스)";
 const ACCOUNT_KAKAO = "카카오뱅크 3333 21 0047953 (한상은)";
 const PROMO_LINE = "꼭 아래링크 확인해주세요.\n재코팅시 휘어지는 밴딩현상 및 볼록 튀어나오는 현상이 일어날 수 있음\nhttps://blog.naver.com/changsungbs/224259893047";
 const APPS_URL   = "https://script.google.com/macros/s/AKfycbwZkOoeWpcIrUof5i-Z-WIJfsHN8R_2bkYk2AobjjDyl1dWRMjZvyEV4Ju-q-S-nhwZ/exec";
+const ECOUNT_LOCAL = "http://127.0.0.1:5000";  // 같은 PC의 이카운트 프로그램(웹으로시작.bat)
 
 // ── CSV 컬럼 위치 ──
 const COL_NAME=2, COL_MEMO=3, COL_TOTAL=14, COL_STATUS=15, COL_TRACKING=17, COL_INVOICE=19;
@@ -924,6 +928,8 @@ function renderScanList() {
           '<textarea class="scan-preview" id="scanMsgg'+gIdx+'" rows="10" oninput="updateScanChar(\'g'+gIdx+'\')">'+esc(previewMsg)+'</textarea>'+
           '<div class="scan-char" id="scanCharg'+gIdx+'"></div>'+
           '<button class="scan-send-btn" id="scanSendBtng'+gIdx+'" onclick="sendGroupDirect('+gIdx+')">📨 '+esc(g.name)+'님께 문자 발송</button>'+
+          ((g.record && String(g.record.status||"").indexOf("택배")>=0) ?
+            '<button class="scan-send-btn" style="background:#7c3aed;margin-top:6px;" id="invBtng'+gIdx+'" onclick="sendInvoiceGroup('+gIdx+')">🧾 계산서 발행 (판매전표 생성)</button>' : '')+
         '</div>'+
       '</div>'
     );
@@ -1063,6 +1069,53 @@ document.getElementById("sendAllScansBtn").addEventListener("click", async () =>
   renderScanList();
   showToast("✅ "+success+"개 거래처 발송 완료!"+(noPhone>0?" (연락처 없음 "+noPhone+"건)":"")+(fail>0?" (실패 "+fail+"건)":""));
 });
+
+// ── 계산서(판매전표) 생성 : 같은 PC 이카운트 프로그램 호출 (택배건만) ──
+async function sendInvoiceGroup(gIdx){
+  const group = buildMergedGroups()[gIdx];
+  if(!group) return;
+  if(!confirm(group.name+"님 계산서(판매전표)를 이카운트에 만들까요?\n(만든 뒤 이카운트에서 세금계산서를 발행하세요)")) return;
+  const btn = document.getElementById("invBtng"+gIdx);
+  if(btn){ btn.disabled=true; btn.textContent="⏳ 전표 생성 중..."; }
+  try{
+    const r = await fetch(ECOUNT_LOCAL+"/invoice/send_tracking",{method:"POST",
+      headers:{"Content-Type":"application/json"}, body:JSON.stringify({trackings:group.trackings})});
+    const d = await r.json();
+    if(d.ok){
+      if(btn){ btn.textContent="✅ 전표 생성됨 — 이카운트에서 발행하세요"; btn.style.background="#16a34a"; }
+      showToast("✅ "+group.name+" 판매전표 생성 완료!");
+    }else{
+      if(btn){ btn.disabled=false; btn.textContent="🧾 계산서 발행 (판매전표 생성)"; }
+      showToast("⚠️ "+(d.error||"실패"), true);
+    }
+  }catch(e){
+    if(btn){ btn.disabled=false; btn.textContent="🧾 계산서 발행 (판매전표 생성)"; }
+    showToast("❌ 이카운트 프로그램이 안 켜져 있어요. '웹으로시작.bat'을 먼저 켜주세요.", true);
+  }
+}
+
+async function sendInvoiceAll(){
+  const groups = buildMergedGroups().filter(g=>g.record && String(g.record.status||"").indexOf("택배")>=0);
+  if(!groups.length){ showToast("택배 계산서 대상이 없어요.", true); return; }
+  if(!confirm("택배 "+groups.length+"개 거래처의 계산서(판매전표)를 한 번에 만들까요?")) return;
+  const allTrk = groups.reduce((a,g)=>a.concat(g.trackings),[]);
+  const btn = document.getElementById("invAllBtn");
+  if(btn){ btn.disabled=true; btn.textContent="⏳ 생성 중..."; }
+  try{
+    const r = await fetch(ECOUNT_LOCAL+"/invoice/send_tracking",{method:"POST",
+      headers:{"Content-Type":"application/json"}, body:JSON.stringify({trackings:allTrk})});
+    const d = await r.json();
+    if(d.ok){
+      let msg="✅ "+(d.sent_cnt||0)+"개 거래처 판매전표 생성!";
+      if(d.skipped && d.skipped.length) msg+=" · 확인필요 "+d.skipped.length+"건(이카운트 발행대기 탭에서 처리)";
+      showToast(msg);
+    }else{
+      showToast("⚠️ "+(d.error||"실패")+(d.skipped&&d.skipped.length?" (확인필요 "+d.skipped.length+"건)":""), true);
+    }
+  }catch(e){ showToast("❌ 이카운트 프로그램('웹으로시작.bat')을 먼저 켜주세요.", true); }
+  finally{ if(btn){ btn.disabled=false; btn.textContent="🧾 전체 계산서"; } }
+}
+document.getElementById("invAllBtn").addEventListener("click", sendInvoiceAll);
 
 // ── CSV 업로드 ──
 document.getElementById("recordBtn").addEventListener("click", ()=>document.getElementById("recordFile").click());
