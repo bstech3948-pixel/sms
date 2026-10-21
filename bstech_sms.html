@@ -167,9 +167,10 @@ input { width:100%; padding:9px 10px; border:1px solid #e5e7eb; border-radius:8p
       <div class="card">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
           <div class="card-title" style="margin-bottom:0;">스캔된 송장 목록</div>
-          <div style="display:flex;gap:6px;">
+          <div style="display:flex;gap:6px;flex-wrap:wrap;">
             <button class="btn btn-green btn-sm" id="sendAllScansBtn">📨 전체 문자 발송</button>
             <button class="btn btn-sm" id="invAllBtn" style="background:#7c3aed;color:#fff;">🧾 전체 계산서</button>
+            <button class="btn btn-sm" id="invMapBtn" style="background:#6b7280;color:#fff;" onclick="openInvMapModal()">🧩 확인필요 지정</button>
           </div>
         </div>
         <div id="scanList"></div>
@@ -248,6 +249,18 @@ input { width:100%; padding:9px 10px; border:1px solid #e5e7eb; border-radius:8p
     <div class="modal-sub" id="sentModalSub">잘못 발송완료된 건을 미발송으로 되돌릴 수 있어요.</div>
     <div id="sentModalList"></div>
     <div class="pager" id="sentModalPager"></div>
+  </div>
+</div>
+
+<!-- 미등록 품목 지정 팝업 -->
+<div class="modal-overlay" id="invMapModal">
+  <div class="modal-box">
+    <div class="modal-head">
+      <div class="modal-title">🧩 확인 필요 건 지정</div>
+      <button class="modal-close" onclick="closeInvMapModal()">&times;</button>
+    </div>
+    <div class="modal-sub">계산서가 자동으로 안 되는 건이에요. 거래처를 고르거나 품목코드를 지정(필요시 단가)하면, 다음부턴 자동으로 계산서가 됩니다.</div>
+    <div id="invMapList"></div>
   </div>
 </div>
 
@@ -1087,6 +1100,58 @@ async function createInvoice(trackings){
     return await r.json();
   }catch(e){ return {ok:false,_offline:true,error:"이카운트 프로그램 꺼짐"}; }
 }
+let _invCat=[], _needfix=[];
+async function invLoadCat(){ if(_invCat.length) return; try{const r=await fetch(ECOUNT_LOCAL+"/invoice/catalog");const d=await r.json();_invCat=d.catalog||[];}catch(e){_invCat=[];} }
+function invCatOpts(){ return '<option value="">품목코드 선택…</option>'+_invCat.map(c=>'<option value="'+esc(c.code)+'">'+esc(c.code)+' · '+esc(c.name)+'</option>').join(''); }
+function closeInvMapModal(){ document.getElementById("invMapModal").classList.remove("open"); }
+async function openInvMapModal(){
+  document.getElementById("invMapModal").classList.add("open");
+  const list=document.getElementById("invMapList");
+  list.innerHTML='<div style="padding:16px;text-align:center;color:#9ca3af;">불러오는 중…</div>';
+  await invLoadCat();
+  let d;
+  try{ const r=await fetch(ECOUNT_LOCAL+"/invoice/needfix"); d=await r.json(); }
+  catch(e){ list.innerHTML='<div style="color:#b91c1c;padding:12px;">이카운트 프로그램(웹으로시작.bat)을 먼저 켜주세요.</div>'; return; }
+  if(!d.ok){ list.innerHTML='<div style="color:#b91c1c;padding:12px;">'+esc(d.error)+'</div>'; return; }
+  _needfix=d.list||[];
+  if(!_needfix.length){ list.innerHTML='<div style="padding:16px;text-align:center;color:#16a34a;font-weight:700;">확인할 게 없어요! 모두 자동으로 계산서가 돼요 👍</div>'; return; }
+  list.innerHTML=_needfix.map((p,i)=>{
+    let cust='';
+    if(!p.cust_code){
+      const cands=(p.cust_cands||[]).map(c=>'<button class="btn btn-sm" style="background:#2563eb;color:#fff;margin:2px;" onclick="nfMapCust('+i+',\''+esc(c.code)+'\')">'+esc(c.name)+' ('+esc(c.code)+')</button>').join('');
+      cust='<div style="margin:6px 0;padding:8px;background:#eff6ff;border-radius:8px;">'+
+        '<div style="font-size:12px;color:#1d4ed8;font-weight:700;margin-bottom:4px;">거래처 지정</div>'+
+        (cands||'<div style="font-size:12px;color:#6b7280;">비슷한 거래처 없음 — 코드 직접 입력</div>')+
+        '<div style="display:flex;gap:6px;margin-top:4px;"><input type="text" id="nfc'+i+'" placeholder="거래처코드 직접입력" style="flex:1;padding:6px;border:1px solid #e5e7eb;border-radius:6px;font-family:inherit;"><button class="btn btn-sm" style="background:#2563eb;color:#fff;" onclick="nfMapCustManual('+i+')">지정</button></div></div>';
+    } else {
+      cust='<div style="font-size:12px;color:#16a34a;margin:4px 0;font-weight:600;">거래처 ✅ '+esc(p.cust_code)+'</div>';
+    }
+    const items=p.items.map((it,j)=>{
+      if(it.code) return '<div style="font-size:12px;color:#6b7280;padding:2px 0;">• '+esc(it.name)+' ×'+it.qty+' → '+esc(it.code)+' ✅</div>';
+      return '<div style="margin:4px 0;padding:8px;background:#fdf2f8;border-radius:8px;">'+
+        '<div style="font-size:12px;color:#be185d;font-weight:700;margin-bottom:4px;">품목 지정: '+esc(it.name)+' ×'+it.qty+'</div>'+
+        '<select id="nfic'+i+'_'+j+'" style="width:100%;padding:6px;border:1px solid #e5e7eb;border-radius:6px;margin-bottom:4px;font-family:inherit;">'+invCatOpts()+'</select>'+
+        '<div style="display:flex;gap:6px;"><input type="number" id="nfip'+i+'_'+j+'" placeholder="단가(1개,선택)" style="flex:1;padding:6px;border:1px solid #e5e7eb;border-radius:6px;font-family:inherit;"><button class="btn btn-sm" style="background:#be185d;color:#fff;" onclick="nfMapItem('+i+','+j+')">저장</button></div></div>';
+    }).join('');
+    return '<div style="border:1px solid #e5e7eb;border-radius:10px;padding:10px;margin-bottom:10px;">'+
+      '<div style="font-weight:700;">'+esc(p.shop)+'</div>'+cust+items+'</div>';
+  }).join('');
+}
+async function nfMapCust(i, code){
+  const shop=_needfix[i].shop;
+  try{ const r=await fetch(ECOUNT_LOCAL+"/invoice/map_cust",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({shop,code})}); const d=await r.json(); if(!d.ok){alert(d.error||"실패");return;} showToast("✅ 거래처 지정 완료"); openInvMapModal(); }
+  catch(e){ alert("이카운트 프로그램(웹으로시작.bat)을 켜주세요."); }
+}
+function nfMapCustManual(i){ const code=document.getElementById("nfc"+i).value.trim(); if(!code){alert("거래처코드를 입력하세요.");return;} nfMapCust(i, code); }
+async function nfMapItem(i,j){
+  const name=_needfix[i].items[j].name;
+  const code=document.getElementById("nfic"+i+"_"+j).value;
+  const price=document.getElementById("nfip"+i+"_"+j).value;
+  if(!code){alert("품목코드를 선택하세요.");return;}
+  try{ const r=await fetch(ECOUNT_LOCAL+"/invoice/map_item",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sheet_name:name,code,price})}); const d=await r.json(); if(!d.ok){alert(d.error||"실패");return;} showToast("✅ 품목 지정 완료"); openInvMapModal(); }
+  catch(e){ alert("이카운트 프로그램(웹으로시작.bat)을 켜주세요."); }
+}
+
 function invResultMsg(inv){
   if(inv.ok) return " · 🧾 판매전표 생성"+(inv.skipped&&inv.skipped.length?"(확인필요 "+inv.skipped.length+")":"");
   if(inv._offline) return " · ⚠️ 계산서는 '웹으로시작.bat' 켜야 생성돼요";
