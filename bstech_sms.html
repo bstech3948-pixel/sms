@@ -927,9 +927,7 @@ function renderScanList() {
           '<div style="font-size:12px;color:#6b7280;font-weight:500;">문자 미리보기 (직접 수정 가능)</div>'+
           '<textarea class="scan-preview" id="scanMsgg'+gIdx+'" rows="10" oninput="updateScanChar(\'g'+gIdx+'\')">'+esc(previewMsg)+'</textarea>'+
           '<div class="scan-char" id="scanCharg'+gIdx+'"></div>'+
-          '<button class="scan-send-btn" id="scanSendBtng'+gIdx+'" onclick="sendGroupDirect('+gIdx+')">📨 '+esc(g.name)+'님께 문자 발송</button>'+
-          ((g.record && String(g.record.status||"").indexOf("택배")>=0) ?
-            '<button class="scan-send-btn" style="background:#7c3aed;margin-top:6px;" id="invBtng'+gIdx+'" onclick="sendInvoiceGroup('+gIdx+')">🧾 계산서 발행 (판매전표 생성)</button>' : '')+
+          '<button class="scan-send-btn" id="scanSendBtng'+gIdx+'" onclick="sendGroupDirect('+gIdx+')">📨 '+esc(g.name)+'님께 문자 발송'+((g.record && String(g.record.status||"").indexOf("택배")>=0)?' + 🧾계산서':'')+'</button>'+
         '</div>'+
       '</div>'
     );
@@ -1018,8 +1016,11 @@ async function sendGroupDirect(gIdx) {
     markAsSent(group.trackings);
     markInvoiceSent(group.trackings);
     addHistory(group.name, phone, group.trackings.join(", "), msg, "발송 성공");
+    const isTax1 = group.record && String(group.record.status||"").indexOf("택배")>=0;
+    let im1 = "";
+    if(isTax1){ const inv=await createInvoice(group.trackings); im1=invResultMsg(inv); }
     renderScanList();
-    showToast("✅ "+group.name+"님께 문자 발송 완료!");
+    showToast("✅ "+group.name+" 문자 발송 완료!"+im1, im1.indexOf("⚠️")>=0);
   } else if (result._responseReceived) {
     showToast("❌ 발송 실패: "+(result.message||"오류"), true);
     btn.textContent = "📨 "+group.name+"님께 문자 발송";
@@ -1028,8 +1029,11 @@ async function sendGroupDirect(gIdx) {
     markAsSent(group.trackings);
     markInvoiceSent(group.trackings);
     addHistory(group.name, phone, group.trackings.join(", "), msg, "응답확인불가");
+    const isTax2 = group.record && String(group.record.status||"").indexOf("택배")>=0;
+    let im2 = "";
+    if(isTax2){ const inv=await createInvoice(group.trackings); im2=invResultMsg(inv); }
     renderScanList();
-    showToast("⚠️ 요청은 보냈어요. 알리고 전송내역에서 확인해주세요.", true);
+    showToast("⚠️ 문자 요청은 보냈어요(알리고 확인)."+im2, true);
   }
 }
 
@@ -1041,6 +1045,7 @@ document.getElementById("sendAllScansBtn").addEventListener("click", async () =>
   if (!confirm(groups.length+"개 거래처에 일괄 발송할까요?\n(연락처가 없는 건은 건너뜁니다)")) return;
 
   let success=0, fail=0, noPhone=0;
+  const taxTrk=[];
   for (let gIdx=0; gIdx<groups.length; gIdx++) {
     const group = groups[gIdx];
     const phone = extractPhone(group.record.memo) || findPhoneByName(group.name);
@@ -1054,23 +1059,40 @@ document.getElementById("sendAllScansBtn").addEventListener("click", async () =>
       markAsSent(group.trackings);
       markInvoiceSent(group.trackings);
       addHistory(group.name, phone, group.trackings.join(", "), msg, "발송 성공");
+      if(group.record && String(group.record.status||"").indexOf("택배")>=0) taxTrk.push.apply(taxTrk, group.trackings);
       success++;
     } else if (!result._responseReceived) {
       group.indices.forEach(i => { scanList[i].sent = true; });
       markAsSent(group.trackings);
       markInvoiceSent(group.trackings);
       addHistory(group.name, phone, group.trackings.join(", "), msg, "응답확인불가");
+      if(group.record && String(group.record.status||"").indexOf("택배")>=0) taxTrk.push.apply(taxTrk, group.trackings);
       success++;
     } else {
       fail++;
     }
     await new Promise(r=>setTimeout(r,300));
   }
+  let imAll="";
+  if(taxTrk.length){ const inv=await createInvoice(taxTrk); imAll = inv.ok ? " · 🧾 전표 "+(inv.sent_cnt||0)+"건 생성"+(inv.skipped&&inv.skipped.length?"(확인필요 "+inv.skipped.length+")":"") : (inv._offline?" · ⚠️ 계산서는 웹으로시작.bat 켜야":" · ⚠️ 계산서 일부 미생성"); }
   renderScanList();
-  showToast("✅ "+success+"개 거래처 발송 완료!"+(noPhone>0?" (연락처 없음 "+noPhone+"건)":"")+(fail>0?" (실패 "+fail+"건)":""));
+  showToast("✅ "+success+"개 거래처 발송 완료!"+imAll+(noPhone>0?" (연락처없음 "+noPhone+")":"")+(fail>0?" (실패 "+fail+")":""), imAll.indexOf("⚠️")>=0);
 });
 
 // ── 계산서(판매전표) 생성 : 같은 PC 이카운트 프로그램 호출 (택배건만) ──
+async function createInvoice(trackings){
+  try{
+    const r=await fetch(ECOUNT_LOCAL+"/invoice/send_tracking",{method:"POST",
+      headers:{"Content-Type":"application/json"}, body:JSON.stringify({trackings})});
+    return await r.json();
+  }catch(e){ return {ok:false,_offline:true,error:"이카운트 프로그램 꺼짐"}; }
+}
+function invResultMsg(inv){
+  if(inv.ok) return " · 🧾 판매전표 생성"+(inv.skipped&&inv.skipped.length?"(확인필요 "+inv.skipped.length+")":"");
+  if(inv._offline) return " · ⚠️ 계산서는 '웹으로시작.bat' 켜야 생성돼요";
+  return " · ⚠️ 계산서 미생성("+(inv.error||"")+")";
+}
+
 async function sendInvoiceGroup(gIdx){
   const group = buildMergedGroups()[gIdx];
   if(!group) return;
@@ -1095,25 +1117,17 @@ async function sendInvoiceGroup(gIdx){
 }
 
 async function sendInvoiceAll(){
-  const groups = buildMergedGroups().filter(g=>g.record && String(g.record.status||"").indexOf("택배")>=0);
-  if(!groups.length){ showToast("택배 계산서 대상이 없어요.", true); return; }
-  if(!confirm("택배 "+groups.length+"개 거래처의 계산서(판매전표)를 한 번에 만들까요?")) return;
-  const allTrk = groups.reduce((a,g)=>a.concat(g.trackings),[]);
+  const trks=[]; const nameset={};
+  scanList.forEach(s=>{ if(s.record && String(s.record.status||"").indexOf("택배")>=0){ trks.push(s.tracking); nameset[s.record.name]=1; } });
+  const nNames=Object.keys(nameset).length;
+  if(!trks.length){ showToast("택배 계산서 대상이 없어요.", true); return; }
+  if(!confirm("택배 "+nNames+"개 거래처의 계산서(판매전표)를 만들까요?\n(이미 만든 건은 자동 제외)")) return;
   const btn = document.getElementById("invAllBtn");
   if(btn){ btn.disabled=true; btn.textContent="⏳ 생성 중..."; }
-  try{
-    const r = await fetch(ECOUNT_LOCAL+"/invoice/send_tracking",{method:"POST",
-      headers:{"Content-Type":"application/json"}, body:JSON.stringify({trackings:allTrk})});
-    const d = await r.json();
-    if(d.ok){
-      let msg="✅ "+(d.sent_cnt||0)+"개 거래처 판매전표 생성!";
-      if(d.skipped && d.skipped.length) msg+=" · 확인필요 "+d.skipped.length+"건(이카운트 발행대기 탭에서 처리)";
-      showToast(msg);
-    }else{
-      showToast("⚠️ "+(d.error||"실패")+(d.skipped&&d.skipped.length?" (확인필요 "+d.skipped.length+"건)":""), true);
-    }
-  }catch(e){ showToast("❌ 이카운트 프로그램('웹으로시작.bat')을 먼저 켜주세요.", true); }
-  finally{ if(btn){ btn.disabled=false; btn.textContent="🧾 전체 계산서"; } }
+  const inv = await createInvoice(trks);
+  if(btn){ btn.disabled=false; btn.textContent="🧾 전체 계산서"; }
+  if(inv.ok) showToast("✅ 판매전표 "+(inv.sent_cnt||0)+"건 생성!"+(inv.skipped&&inv.skipped.length?" · 확인필요 "+inv.skipped.length+"건":""));
+  else showToast("⚠️ "+(inv.error||"실패")+(inv._offline?" (웹으로시작.bat 켜주세요)":""), true);
 }
 document.getElementById("invAllBtn").addEventListener("click", sendInvoiceAll);
 
