@@ -462,15 +462,27 @@ function loadSentHistory() {
       for (var i = 1; i < data.length; i++) {
         var time = String(data[i][0] || "").trim();
         var name = String(data[i][1] || "").trim();
+        var tracking = String(data[i][3] || "").trim(); // 송장
         var msg  = String(data[i][5] || "");
         var prev = String(data[i][6] || "").trim(); // 진행사항(원래 P열)
         if (!time && !name) continue;
         var d = parseHistDate(time);
         if (isNaN(d.getTime())) d = null;
         if (d && d.getTime() < cutoff) continue; // 2주 넘은 건 제외
-        rows.push({ d: d, name: name, items: extractItems(msg), prev: prev });
+        rows.push({ d: d, name: name, items: extractItems(msg), prev: prev, tracking: tracking });
       }
-      histRows = rows; // 보관 (최신순)
+      // 같은 송장 중복 제거 (되돌리기/재발송으로 여러 번 쌓인 것 → 최신 1건만)
+      var byKey = {}, noKey = [];
+      for (var k = 0; k < rows.length; k++) {
+        var r = rows[k];
+        var key = r.tracking ? r.tracking.replace(/[^0-9]/g, "") : "";
+        if (!key) { noKey.push(r); continue; }
+        if (!byKey[key] || (r.d && (!byKey[key].d || r.d.getTime() > byKey[key].d.getTime()))) byKey[key] = r;
+      }
+      var deduped = noKey.slice();
+      for (var kk in byKey) { if (byKey.hasOwnProperty(kk)) deduped.push(byKey[kk]); }
+      deduped.sort(function(a, b) { var ta = a.d ? a.d.getTime() : 0, tb = b.d ? b.d.getTime() : 0; return tb - ta; });
+      histRows = deduped; // 보관 (중복제거 + 최신순)
       renderHistList(document.getElementById("histSearch").value);
     })
     .catch(function(err) {
