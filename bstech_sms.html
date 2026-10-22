@@ -1031,7 +1031,7 @@ async function sendGroupDirect(gIdx) {
     addHistory(group.name, phone, group.trackings.join(", "), msg, "발송 성공");
     const isTax1 = (group.source||'main')!=='school';
     let im1 = "";
-    if(isTax1){ const inv=await createInvoice(group.trackings); im1=invResultMsg(inv); }
+    if(isTax1){ const inv=await createInvoice(group.trackings); im1=invResultMsg(inv); if(!inv.ok && !inv._offline) group.trackings.forEach(t=>_invFailed.add(t)); }
     renderScanList();
     showToast("✅ "+group.name+" 문자 발송 완료!"+im1, im1.indexOf("⚠️")>=0);
   } else if (result._responseReceived) {
@@ -1044,7 +1044,7 @@ async function sendGroupDirect(gIdx) {
     addHistory(group.name, phone, group.trackings.join(", "), msg, "응답확인불가");
     const isTax2 = (group.source||'main')!=='school';
     let im2 = "";
-    if(isTax2){ const inv=await createInvoice(group.trackings); im2=invResultMsg(inv); }
+    if(isTax2){ const inv=await createInvoice(group.trackings); im2=invResultMsg(inv); if(!inv.ok && !inv._offline) group.trackings.forEach(t=>_invFailed.add(t)); }
     renderScanList();
     showToast("⚠️ 문자 요청은 보냈어요(알리고 확인)."+im2, true);
   }
@@ -1100,7 +1100,7 @@ async function createInvoice(trackings){
     return await r.json();
   }catch(e){ return {ok:false,_offline:true,error:"이카운트 프로그램 꺼짐"}; }
 }
-let _invCat=[], _needfix=[];
+let _invCat=[], _needfix=[], _invFailed=new Set();
 async function invLoadCat(){ if(_invCat.length) return; try{const r=await fetch(ECOUNT_LOCAL+"/invoice/catalog");const d=await r.json();_invCat=d.catalog||[];}catch(e){_invCat=[];} }
 function invCatOpts(){ return '<option value="">품목코드 선택…</option>'+_invCat.map(c=>'<option value="'+esc(c.code)+'">'+esc(c.code)+' · '+esc(c.name)+'</option>').join(''); }
 function closeInvMapModal(){ document.getElementById("invMapModal").classList.remove("open"); }
@@ -1111,7 +1111,8 @@ async function openInvMapModal(){
   await invLoadCat();
   let d;
   const _g=buildMergedGroups().filter(g=>(g.source||'main')!=='school');
-  const _t=_g.reduce((a,g)=>a.concat(g.trackings),[]);
+  const _tSet=new Set(); _g.forEach(g=>g.trackings.forEach(t=>_tSet.add(t))); _invFailed.forEach(t=>_tSet.add(t));
+  const _t=Array.from(_tSet);
   try{ const r=await fetch(ECOUNT_LOCAL+"/invoice/needfix",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({trackings:_t})}); d=await r.json(); }
   catch(e){ list.innerHTML='<div style="color:#b91c1c;padding:12px;">이카운트 프로그램(웹으로시작.bat)을 먼저 켜주세요.</div>'; return; }
   if(!d.ok){ list.innerHTML='<div style="color:#b91c1c;padding:12px;">'+esc(d.error)+'</div>'; return; }
@@ -1186,10 +1187,10 @@ async function sendInvoiceGroup(gIdx){
 async function sendInvoiceAll(){
   // 문자 미발송 건(현재 목록) 전부 — 학교납품만 제외. 이미 문자 보낸/과거 건은 제외됨.
   const groups = buildMergedGroups().filter(g=>(g.source||'main')!=='school');
-  if(!groups.length){ showToast("문자 미발송 건이 없어요.", true); return; }
-  const trks = groups.reduce((a,g)=>a.concat(g.trackings),[]);
-  const nNames = groups.length;
-  if(!confirm("문자 미발송 "+nNames+"개 거래처의 판매전표를 만들까요?\n(문자는 안 보내요 · 이미 만든 건 자동 제외)")) return;
+  const trkSet=new Set(); groups.forEach(g=>g.trackings.forEach(t=>trkSet.add(t))); _invFailed.forEach(t=>trkSet.add(t));
+  if(!trkSet.size){ showToast("판매전표 만들 건이 없어요.", true); return; }
+  const trks=Array.from(trkSet);
+  if(!confirm("판매전표를 만들까요? (문자 미발송 "+groups.length+"곳"+(_invFailed.size?" + 재시도 "+_invFailed.size+"건":"")+")\n문자는 안 보내요 · 이미 만든 건 자동 제외")) return;
   const btn = document.getElementById("invAllBtn");
   if(btn){ btn.disabled=true; btn.textContent="⏳ 생성 중..."; }
   const inv = await createInvoice(trks);
