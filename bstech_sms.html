@@ -948,13 +948,17 @@ function renderScanList() {
 
   // 상호명 미매칭 + 미발송 건 (접수내역에서 못 찾은 스캔) 별도 표시
   const unmatched = scanList.filter(s => !s.record && !s.sent);
+  window._unmatchedScans = unmatched;
   if (unmatched.length > 0) {
     html += '<div style="margin-top:14px;padding-top:10px;border-top:1px dashed #e5e7eb;">'+
       '<div style="font-size:12px;color:#b45309;font-weight:600;margin-bottom:8px;">⚠️ 상호 미매칭 '+unmatched.length+'건 (접수내역에서 송장을 못 찾음 · 문자 발송 불가)</div>'+
-      unmatched.map(s => (
-        '<div class="scan-row" style="display:block;background:#fffbeb;border-color:#fde68a;">'+
-          '<div class="scan-no">'+esc(s.tracking)+'</div>'+
-          '<div class="scan-nomatch">접수내역에 없는 송장이에요. 구글시트 송장번호를 확인해주세요.</div>'+
+      unmatched.map((s,idx) => (
+        '<div class="scan-row" style="display:flex;justify-content:space-between;align-items:center;background:#fffbeb;border-color:#fde68a;">'+
+          '<div style="min-width:0;">'+
+            '<div class="scan-no">'+esc(s.tracking)+'</div>'+
+            '<div class="scan-nomatch">접수내역에 없는 송장이에요. 구글시트 송장번호를 확인해주세요.</div>'+
+          '</div>'+
+          '<button class="btn btn-sm" style="background:#dc2626;color:#fff;flex-shrink:0;margin-left:8px;" onclick="deleteUnmatchedScan('+idx+')">🗑️ 삭제</button>'+
         '</div>'
       )).join("")+
     '</div>';
@@ -1256,6 +1260,15 @@ async function sendInvoiceGroup(gIdx){
   }
 }
 
+async function deleteUnmatchedScan(idx){
+  var s = (window._unmatchedScans||[])[idx]; if(!s) return;
+  if(!confirm("이 송장을 스캔 목록에서 삭제할까요?\n"+s.tracking+"\n(구글시트 당일발송 송장스캔에서 지워져요)")) return;
+  try{
+    await fetch(APPS_URL+"?type=deleteScan&tracking="+encodeURIComponent(s.tracking));
+    showToast("✅ 삭제했어요");
+    loadScanList(true);
+  }catch(e){ showToast("❌ 삭제 실패: "+e, true); }
+}
 async function sendInvoiceAll(){
   // 문자 미발송 건(현재 목록) 전부 — 학교납품만 제외. 이미 문자 보낸/과거 건은 제외됨.
   const groups = buildMergedGroups().filter(g=>(g.source||'main')!=='school');
