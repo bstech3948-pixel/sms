@@ -477,7 +477,14 @@ function loadSentHistory() {
         var r = rows[k];
         var key = r.tracking ? r.tracking.replace(/[^0-9]/g, "") : "";
         if (!key) { noKey.push(r); continue; }
-        if (!byKey[key] || (r.d && (!byKey[key].d || r.d.getTime() > byKey[key].d.getTime()))) byKey[key] = r;
+        var ex = byKey[key];
+        if (!ex) { byKey[key] = r; continue; }
+        // 최신 날짜를 대표로, 단 진행사항(빨간글씨)·품목은 비어있으면 다른 쪽 내용으로 채움
+        var keep = (r.d && (!ex.d || r.d.getTime() > ex.d.getTime())) ? r : ex;
+        var other = (keep === r) ? ex : r;
+        if (!keep.prev && other.prev) keep.prev = other.prev;
+        if (!keep.items && other.items) keep.items = other.items;
+        byKey[key] = keep;
       }
       var deduped = noKey.slice();
       for (var kk in byKey) { if (byKey.hasOwnProperty(kk)) deduped.push(byKey[kk]); }
@@ -538,6 +545,7 @@ function renderHistList(query) {
     html += '<div class="hist-item">' +
       '<div class="hist-name">' + esc(r.name || "(상호 없음)") + dateTag + '</div>' +
       (r.items ? '<div class="hist-items">' + esc(r.items) + '</div>' : '') +
+      (r.tracking ? '<div class="hist-items" style="color:#9ca3af;font-size:12px;">송장 ' + esc(r.tracking) + '</div>' : '') +
       (r.prev ? '<div class="hist-prev">📌 ' + esc(r.prev) + '</div>' : '') +
       '</div>';
   });
