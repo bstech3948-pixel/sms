@@ -1037,7 +1037,7 @@ async function sendGroupDirect(gIdx) {
     let im1 = "";
     if(isTax1){ const inv=await createInvoice(group.trackings); im1=invResultMsg(inv); if(!inv.ok && !inv._offline) group.trackings.forEach(t=>_invFailed.add(t)); }
     renderScanList();
-    showToast("✅ "+group.name+" 문자 발송 완료!"+im1, im1.indexOf("⚠️")>=0);
+    showToast("✅ "+group.name+" 문자 발송 완료!"+im1, false);
   } else if (result._responseReceived) {
     showToast("❌ 발송 실패: "+(result.message||"오류"), true);
     btn.textContent = "📨 "+group.name+"님께 문자 발송";
@@ -1232,9 +1232,9 @@ async function nfMapItem(i,j){
 }
 
 function invResultMsg(inv){
-  if(inv.ok) return " · 🧾 판매전표 생성"+(inv.skipped&&inv.skipped.length?"(확인필요 "+inv.skipped.length+")":"");
-  if(inv._offline) return " · ⚠️ 계산서는 '웹으로시작.bat' 켜야 생성돼요";
-  return " · ⚠️ 계산서 미생성("+(inv.error||"")+")";
+  if(inv.ok) return " · 🧾 판매전표 생성 완료"+(inv.skipped&&inv.skipped.length?" (확인필요 "+inv.skipped.length+"건)":"");
+  if(inv._offline) return "\n⚠️ 판매전표는 '웹으로시작.bat'을 켜야 생성돼요";
+  return "\n⚠️ 판매전표는 안 됐어요 — 이카운트에서 직접 넣어주세요";
 }
 
 async function sendInvoiceGroup(gIdx){
