@@ -580,6 +580,7 @@ async function loadScanList(silent) {
       const tracking = String(data[i][1]||"").trim();
       const source   = String(data[i][4]||"").trim();
       const sentFlag = String(data[i][5]||"").trim(); // F열: 발송완료 여부
+      const who      = String(data[i][7]||"").trim(); // H열: 스캔한 사람
       if (!tracking) continue;
 
       const rec = records.find((r) => {
@@ -589,7 +590,7 @@ async function loadScanList(silent) {
       // source 판정: 접수내역에서 찾았으면 그 source 우선 (시트 E열이 틀려도 접수내역 기준)
       const isSchool = rec ? (rec.source === "school") : (source === "school");
       const isSent = sentFlag === "발송완료" || sentTrackings.includes(tracking);
-      scanList.push({ time, tracking, record: rec || null, source: isSchool ? "school" : "main", sent: isSent });
+      scanList.push({ time, tracking, record: rec || null, source: isSchool ? "school" : "main", sent: isSent, who: who });
     }
     // 시트가 이미 최신순(위가 최신)으로 쌓이므로 그대로 사용
 
@@ -735,15 +736,17 @@ let sentModalPage = 0;
 
 function getSentGroups() {
   const map = {};
+  const whoMap = {};
   const order = [];
   scanList.forEach(s => {
     if (s.record && s.sent) {
       const nm = s.record.name;
-      if (!map[nm]) { map[nm] = []; order.push(nm); }
+      if (!map[nm]) { map[nm] = []; whoMap[nm] = {}; order.push(nm); }
       map[nm].push(s.tracking);
+      whoMap[nm][s.tracking] = s.who || "";
     }
   });
-  return order.map(nm => ({ name: nm, trackings: map[nm] }));
+  return order.map(nm => ({ name: nm, trackings: map[nm], trackWho: whoMap[nm] }));
 }
 
 function openSentModal() {
@@ -783,7 +786,7 @@ function renderSentModal() {
     return '<div class="sent-item">'+
       '<div style="flex:1;min-width:0;">'+
         '<div class="sent-name">'+esc(g.name)+(cnt>1?' <span style="background:#e5e7eb;color:#6b7280;font-size:11px;padding:2px 6px;border-radius:10px;">'+cnt+'건</span>':'')+'</div>'+
-        '<div class="sent-trk">송장: '+esc(g.trackings.join(", "))+'</div>'+
+        '<div class="sent-trk">송장: '+trackingsWithWho(g.trackings, g.trackWho)+'</div>'+
       '</div>'+
       '<button class="btn btn-sm" style="background:#b45309;flex-shrink:0;margin-left:8px;" onclick="undoSentGroup(\''+encodeURIComponent(g.name)+'\')">↩️ 되돌리기</button>'+
     '</div>';
@@ -830,6 +833,7 @@ function buildMergedGroups() {
         name: name,
         trackings: [],
         items: [],
+        trackWho: {},
         total: s.record.total,
         record: s.record,
         indices: [],
@@ -839,6 +843,7 @@ function buildMergedGroups() {
       };
     }
     groups[name].trackings.push(s.tracking);
+    groups[name].trackWho[s.tracking] = s.who || "";
     if (s.record.items && !groups[name].items.includes(s.record.items)) {
       groups[name].items.push(s.record.items);
     }
@@ -876,6 +881,14 @@ function buildMergedMessage(group) {
   }
 }
 
+// 송장목록 + 송장별 스캔한 사람(👤) 표기
+function trackingsWithWho(trackings, trackWho) {
+  return trackings.map(function(t){
+    var w = (trackWho && trackWho[t]) ? trackWho[t] : "";
+    return esc(t) + (w ? ' <span style="color:#6d28d9;font-weight:600;">👤'+esc(w)+'</span>' : '');
+  }).join(", ");
+}
+
 function renderScanList() {
   const list = document.getElementById("scanList");
   const mergedGroups = buildMergedGroups();
@@ -901,6 +914,7 @@ function renderScanList() {
     const autoPhone = formatPhone(extractPhone(g.record.memo) || findPhoneByName(g.name) || "");
     const previewMsg = buildMergedMessage(g);
     const trackingDisplay = g.trackings.join(", ");
+    const trackingHtml = trackingsWithWho(g.trackings, g.trackWho);
 
     return (
       '<div class="scan-row" style="display:block;" id="scanGroup'+gIdx+'">'+
@@ -908,7 +922,7 @@ function renderScanList() {
           '<div class="scan-info">'+
             '<div class="scan-no">'+esc(g.name)+(g.trackings.length>1?' <span style="background:#dbeafe;color:#1d4ed8;font-size:11px;padding:2px 6px;border-radius:10px;">'+g.trackings.length+'건</span>':'')+
             '</div>'+
-            '<div class="scan-time">송장: '+esc(trackingDisplay)+'</div>'+
+            '<div class="scan-time">송장: '+trackingHtml+'</div>'+
             '<div class="scan-match">✅ '+esc([...new Set(g.items)].join(", ")||"품목 없음")+'</div>'+
           '</div>'+
           '<button class="scan-toggle" onclick="toggleScanExpand(\'g'+gIdx+'\')">미리보기</button>'+
@@ -916,7 +930,7 @@ function renderScanList() {
         '<div class="scan-expand" id="scanExpandg'+gIdx+'">'+
           '<div class="scan-detail"><span class="scan-detail-label">상호명</span><span class="scan-detail-val">'+esc(g.name)+'</span></div>'+
           '<div class="scan-detail"><span class="scan-detail-label">품목</span><span class="scan-detail-val">'+esc([...new Set(g.items)].join(", ")||"없음")+'</span></div>'+
-          '<div class="scan-detail"><span class="scan-detail-label">송장번호</span><span class="scan-detail-val">'+esc(trackingDisplay)+'</span></div>'+
+          '<div class="scan-detail"><span class="scan-detail-label">송장번호</span><span class="scan-detail-val">'+trackingHtml+'</span></div>'+
           '<div class="scan-detail"><span class="scan-detail-label">총액</span><span class="scan-detail-val">'+formatMoney(g.total)+'</span></div>'+
           '<div style="margin-top:8px;font-size:12px;color:#6b7280;font-weight:500;">연락처</div>'+
           '<input class="scan-phone" id="scanPhoneg'+gIdx+'" value="'+esc(autoPhone)+'" placeholder="010-0000-0000">'+
@@ -936,7 +950,7 @@ function renderScanList() {
       '<div style="font-size:12px;color:#b45309;font-weight:600;margin-bottom:8px;">⚠️ 상호 미매칭 '+unmatched.length+'건 (접수내역에서 송장을 못 찾음 · 문자 발송 불가)</div>'+
       unmatched.map(s => (
         '<div class="scan-row" style="display:block;background:#fffbeb;border-color:#fde68a;">'+
-          '<div class="scan-no">'+esc(s.tracking)+'</div>'+
+          '<div class="scan-no">'+esc(s.tracking)+(s.who?' <span style="color:#6d28d9;font-weight:600;font-size:12px;">👤'+esc(s.who)+'</span>':'')+'</div>'+
           '<div class="scan-nomatch">접수내역에 없는 송장이에요. 구글시트 송장번호를 확인해주세요.</div>'+
         '</div>'
       )).join("")+
