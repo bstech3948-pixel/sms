@@ -54,6 +54,12 @@ body { font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif; background:
     <p>택배 바코드를 카메라에 비추세요</p>
   </div>
 
+  <!-- 스캔한 사람 표시 바 -->
+  <div id="whoBar" style="background:#0f766e;color:#fff;padding:9px 16px;display:flex;justify-content:space-between;align-items:center;font-size:13px;">
+    <span>👤 스캔한 사람: <b id="whoName">-</b></span>
+    <button onclick="openWhoPicker()" style="background:rgba(255,255,255,0.22);color:#fff;border:none;border-radius:6px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;">바꾸기</button>
+  </div>
+
   <div class="tabs">
     <button class="tab active" id="tabScanBtn" onclick="switchTab('scan')">📷 송장 스캔</button>
     <button class="tab" id="tabHistBtn" onclick="switchTab('hist')">📋 발송내역</button>
@@ -104,12 +110,44 @@ body { font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif; background:
   </div>
 </div>
 
+<!-- 스캔한 사람 선택 화면 -->
+<div id="whoOverlay" style="position:fixed;inset:0;background:rgba(17,24,39,0.97);z-index:1000;display:none;flex-direction:column;align-items:center;justify-content:center;padding:24px;">
+  <div style="color:#fff;font-size:22px;font-weight:700;margin-bottom:6px;">누가 스캔하나요?</div>
+  <div style="color:rgba(255,255,255,0.6);font-size:13px;margin-bottom:26px;">이름을 선택하세요</div>
+  <div id="whoButtons" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;width:100%;max-width:360px;"></div>
+</div>
+
 <script>
 // ── 설정 ──
 var APPS_URL = "https://script.google.com/macros/s/AKfycbwZkOoeWpcIrUof5i-Z-WIJfsHN8R_2bkYk2AobjjDyl1dWRMjZvyEV4Ju-q-S-nhwZ/exec";
 var scanHistory = [];
 var lastScan = "";
 var lastScanTime = 0;
+
+// ── 스캔한 사람 ──
+var SCAN_NAMES = ["이윤범", "최승영", "김선우", "박종훈"];
+var scanWho = "";
+try { scanWho = localStorage.getItem("scanWho") || ""; } catch (e) {}
+
+function renderWhoButtons() {
+  document.getElementById("whoButtons").innerHTML = SCAN_NAMES.map(function (n) {
+    return '<button onclick="pickWho(\'' + n + '\')" style="padding:22px 8px;background:#fff;color:#1f2937;border:none;border-radius:12px;font-size:18px;font-weight:700;cursor:pointer;font-family:inherit;">' + n + '</button>';
+  }).join("");
+}
+function openWhoPicker() {
+  renderWhoButtons();
+  document.getElementById("whoOverlay").style.display = "flex";
+}
+function pickWho(name) {
+  scanWho = name;
+  try { localStorage.setItem("scanWho", name); } catch (e) {}
+  document.getElementById("whoName").textContent = name;
+  document.getElementById("whoOverlay").style.display = "none";
+}
+function initWho() {
+  if (scanWho) document.getElementById("whoName").textContent = scanWho;
+  else openWhoPicker();
+}
 
 // 숫자만 추출 (하이픈·공백·형식 차이 무시하고 비교용)
 function onlyDigits(s) {
@@ -152,6 +190,13 @@ function saveScan(tracking) {
   if (!tracking) return;
   tracking = tracking.trim();
 
+  // 스캔한 사람을 먼저 선택해야 저장됨
+  if (!scanWho) {
+    openWhoPicker();
+    showResult("먼저 '스캔한 사람'을 선택하세요", "error");
+    return;
+  }
+
   // 숫자만 추출 후 하이픈 형식으로 변환
   var formatted = formatTracking(tracking);
 
@@ -175,7 +220,7 @@ function saveScan(tracking) {
   showResult("저장 중... " + formatted, "saving");
 
   // 앱스 스크립트에 저장 요청
-  fetch(APPS_URL + "?type=addScan&tracking=" + encodeURIComponent(formatted))
+  fetch(APPS_URL + "?type=addScan&tracking=" + encodeURIComponent(formatted) + "&who=" + encodeURIComponent(scanWho))
     .then(function(res) { return res.text(); })
     .then(function(result) {
       // 서버에서 중복으로 판정한 경우 → 저장 안 됨, 중복 안내만
@@ -199,7 +244,8 @@ function saveScan(tracking) {
         time: new Date().toLocaleTimeString("ko-KR"),
         status: "ok",
         name: matchName,
-        items: matchItems
+        items: matchItems,
+        who: scanWho
       });
       renderList();
       showResult("✅ 저장 완료! " + formatted + (displayInfo ? "\n" + displayInfo : ""), "success");
@@ -243,6 +289,7 @@ function loadTodayScans() {
         var name     = String(data[i][2] || "").trim();
         var items    = String(data[i][3] || "").trim();
         var sentFlag = String(data[i][5] || "").trim();
+        var who      = String(data[i][7] || "").trim();  // H열 스캔한 사람
         if (!tracking) continue;
         if (!isToday(time)) continue; // 오늘 것만
         loaded.push({
@@ -251,6 +298,7 @@ function loadTodayScans() {
           status: "ok",
           name: name,
           items: items,
+          who: who,
           sent: sentFlag === "발송완료"
         });
       }
@@ -282,6 +330,7 @@ function renderList() {
         var g = groups[groupMap[s.name]];
         g.trackings.push(s.tracking);
         if (s.items && g.items.indexOf(s.items) < 0) g.items.push(s.items);
+        if (s.who && g.whos.indexOf(s.who) < 0) g.whos.push(s.who);
         if (s.status !== "ok") g.allOk = false;
       } else {
         groupMap[s.name] = groups.length;
@@ -289,6 +338,7 @@ function renderList() {
           name: s.name,
           trackings: [s.tracking],
           items: s.items ? [s.items] : [],
+          whos: s.who ? [s.who] : [],
           time: s.time,
           allOk: s.status === "ok"
         });
@@ -299,6 +349,7 @@ function renderList() {
         name: "",
         trackings: [s.tracking],
         items: [],
+        whos: s.who ? [s.who] : [],
         time: s.time,
         allOk: s.status === "ok"
       });
@@ -327,6 +378,7 @@ function renderList() {
       '<div class="scan-time">' + g.time + '</div>' +
       trackingHtml +
       (g.items.length ? '<div style="font-size:12px;color:#15803d;margin-top:2px;">✅ '+g.items.join(", ")+'</div>' : '') +
+      (g.whos.length ? '<div style="font-size:12px;color:#6d28d9;margin-top:2px;font-weight:600;">👤 '+g.whos.join(", ")+'</div>' : '') +
       '</div>';
   }).join("");
 }
@@ -390,7 +442,8 @@ document.getElementById("manualInput").addEventListener("keydown", function(e) {
   }
 });
 
-// ── 페이지 열릴 때 오늘 스캔 목록 불러오기 (새로고침해도 복원) ──
+// ── 페이지 열릴 때: 스캔한 사람 확인 + 오늘 스캔 목록 불러오기 ──
+initWho();
 loadTodayScans();
 
 // 다른 화면 갔다 돌아오면 목록 다시 불러오기 (다른 폰이 찍은 것도 반영)
@@ -462,34 +515,15 @@ function loadSentHistory() {
       for (var i = 1; i < data.length; i++) {
         var time = String(data[i][0] || "").trim();
         var name = String(data[i][1] || "").trim();
-        var tracking = String(data[i][3] || "").trim(); // 송장
         var msg  = String(data[i][5] || "");
         var prev = String(data[i][6] || "").trim(); // 진행사항(원래 P열)
         if (!time && !name) continue;
         var d = parseHistDate(time);
         if (isNaN(d.getTime())) d = null;
         if (d && d.getTime() < cutoff) continue; // 2주 넘은 건 제외
-        rows.push({ d: d, name: name, items: extractItems(msg), prev: prev, tracking: tracking });
+        rows.push({ d: d, name: name, items: extractItems(msg), prev: prev });
       }
-      // 같은 송장 중복 제거 (되돌리기/재발송으로 여러 번 쌓인 것 → 최신 1건만)
-      var byKey = {}, noKey = [];
-      for (var k = 0; k < rows.length; k++) {
-        var r = rows[k];
-        var key = r.tracking ? r.tracking.replace(/[^0-9]/g, "") : "";
-        if (!key) { noKey.push(r); continue; }
-        var ex = byKey[key];
-        if (!ex) { byKey[key] = r; continue; }
-        // 최신 날짜를 대표로, 단 진행사항(빨간글씨)·품목은 비어있으면 다른 쪽 내용으로 채움
-        var keep = (r.d && (!ex.d || r.d.getTime() > ex.d.getTime())) ? r : ex;
-        var other = (keep === r) ? ex : r;
-        if (!keep.prev && other.prev) keep.prev = other.prev;
-        if (!keep.items && other.items) keep.items = other.items;
-        byKey[key] = keep;
-      }
-      var deduped = noKey.slice();
-      for (var kk in byKey) { if (byKey.hasOwnProperty(kk)) deduped.push(byKey[kk]); }
-      deduped.sort(function(a, b) { var ta = a.d ? a.d.getTime() : 0, tb = b.d ? b.d.getTime() : 0; return tb - ta; });
-      histRows = deduped; // 보관 (중복제거 + 최신순)
+      histRows = rows; // 보관 (최신순)
       renderHistList(document.getElementById("histSearch").value);
     })
     .catch(function(err) {
@@ -545,7 +579,6 @@ function renderHistList(query) {
     html += '<div class="hist-item">' +
       '<div class="hist-name">' + esc(r.name || "(상호 없음)") + dateTag + '</div>' +
       (r.items ? '<div class="hist-items">' + esc(r.items) + '</div>' : '') +
-      (r.tracking ? '<div class="hist-items" style="color:#9ca3af;font-size:12px;">송장 ' + esc(r.tracking) + '</div>' : '') +
       (r.prev ? '<div class="hist-prev">📌 ' + esc(r.prev) + '</div>' : '') +
       '</div>';
   });
